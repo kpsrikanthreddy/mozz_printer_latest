@@ -42,10 +42,66 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Rebuild native dependencies for Electron 34 ABI
+        run: npx electron-builder install-app-deps
+
+      - name: Verify native better-sqlite3 Electron ABI
+        shell: pwsh
+        run: |
+          Write-Host "Verifying better-sqlite3 native binary presence for Electron..."
+          $sqliteBinding = Get-ChildItem -Path "node_modules\better-sqlite3" -Filter "better_sqlite3.node" -Recurse | Select-Object -First 1
+          if (-not $sqliteBinding) {
+            Write-Error "better_sqlite3.node native binary not found in node_modules"
+            exit 1
+          }
+          Write-Host "Rebuilt native module found at: $($sqliteBinding.FullName)"
+
       - name: Build Windows installer
         run: npm run build:win -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Packaged app smoke test (ready-to-show)
+        shell: pwsh
+        run: |
+          $unpackedExe = Get-Item "release\win-unpacked\*.exe" | Select-Object -First 1
+          if (-not $unpackedExe -or -not (Test-Path $unpackedExe.FullName)) {
+            Write-Error "Packaged executable not found in release\win-unpacked\"
+            exit 1
+          }
+          Write-Host "Launching packaged app for smoke test: $($unpackedExe.FullName) --smoke-test"
+          
+          # Launch packaged Electron app with smoke test flag
+          $proc = Start-Process -FilePath $unpackedExe.FullName -ArgumentList "--smoke-test" -PassThru -NoNewWindow
+          $timeoutMs = 45000
+          $finished = $proc.WaitForExit($timeoutMs)
+          
+          if (-not $finished) {
+            Write-Host "Process did not exit within $($timeoutMs / 1000)s. Forcing process shutdown..."
+            Stop-Process -Id $proc.Id -Force
+            
+            $logFile = Get-ChildItem -Path "$env:APPDATA" -Filter "main.log" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($logFile) {
+              Write-Host "=== Diagnostic Log: $($logFile.FullName) ==="
+              Get-Content $logFile.FullName
+            }
+            Write-Error "Packaged app smoke test FAILED: Timed out waiting for ready-to-show."
+            exit 1
+          }
+          
+          Write-Host "Packaged app exited with code: $($proc.ExitCode)"
+          
+          $logFile = Get-ChildItem -Path "$env:APPDATA" -Filter "main.log" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($logFile) {
+            Write-Host "=== Diagnostic Log ($($logFile.FullName)) ==="
+            Get-Content $logFile.FullName
+          }
+          
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "Packaged app smoke test FAILED with exit code $($proc.ExitCode)"
+            exit $proc.ExitCode
+          }
+          Write-Host "Packaged app smoke test SUCCEEDED: Main window reached ready-to-show!"
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4

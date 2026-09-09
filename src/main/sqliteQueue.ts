@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import type DatabaseType from 'better-sqlite3';
 import type {
   PrintJob,
   PrintJobStatus,
@@ -8,6 +8,16 @@ import type {
   PrinterConfig,
   PrinterStation,
 } from '../types/index.js';
+
+let BetterSqlite3Constructor: any = null;
+let betterSqlite3LoadError: Error | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  BetterSqlite3Constructor = require('better-sqlite3');
+} catch (err: any) {
+  betterSqlite3LoadError = err instanceof Error ? err : new Error(String(err));
+}
 
 let electron: any = null;
 try {
@@ -30,9 +40,10 @@ export const DEFAULT_RETENTION_POLICY: RetentionPolicy = {
 };
 
 export class SqlitePrintQueue {
-  private db: Database.Database | null = null;
+  private db: DatabaseType.Database | null = null;
   private dbPath: string;
   private retentionPolicy: RetentionPolicy;
+  private initError: Error | null = null;
 
   constructor(customDir?: string, retentionPolicy: RetentionPolicy = DEFAULT_RETENTION_POLICY) {
     let baseDir = customDir || '';
@@ -51,6 +62,18 @@ export class SqlitePrintQueue {
     this.init();
   }
 
+  public isReady(): boolean {
+    return this.db !== null && this.initError === null;
+  }
+
+  public getInitError(): Error | null {
+    return this.initError;
+  }
+
+  public getDbPath(): string {
+    return this.dbPath;
+  }
+
   private init(): void {
     try {
       this.openDatabase();
@@ -58,14 +81,24 @@ export class SqlitePrintQueue {
       this.createSchema();
       this.performStartupRecovery();
       this.applyRetentionCleanup();
+      this.initError = null;
     } catch (err: any) {
+      this.initError = err instanceof Error ? err : new Error(String(err));
       console.error('[SqliteQueue] Failed to initialize SQLite database:', err.message);
-      this.handleCorruptionOrFailure(err);
+      if (BetterSqlite3Constructor && !betterSqlite3LoadError) {
+        this.handleCorruptionOrFailure(err);
+      }
     }
   }
 
   private openDatabase(): void {
-    this.db = new Database(this.dbPath, {
+    if (betterSqlite3LoadError || !BetterSqlite3Constructor) {
+      throw (
+        betterSqlite3LoadError ||
+        new Error('better-sqlite3 native module is not available in the current runtime environment.')
+      );
+    }
+    this.db = new BetterSqlite3Constructor(this.dbPath, {
       fileMustExist: false,
       timeout: 5000,
     });
@@ -235,8 +268,10 @@ export class SqlitePrintQueue {
       this.openDatabase();
       this.applyPragmas();
       this.createSchema();
+      this.initError = null;
       console.log('[SqliteQueue] Successfully recovered and initialized fresh SQLite database.');
-    } catch (reErr) {
+    } catch (reErr: any) {
+      this.initError = reErr instanceof Error ? reErr : new Error(String(reErr));
       console.error('[SqliteQueue] Fatal error during corruption recovery:', reErr);
     }
   }
@@ -563,4 +598,31 @@ export class SqlitePrintQueue {
   }
 }
 
-export const sqliteQueue = new SqlitePrintQueue();
+let defaultSqliteQueueInstance: SqlitePrintQueue | null = null;
+
+export function getSqliteQueue(customDir?: string): SqlitePrintQueue {
+  if (customDir) {
+    return new SqlitePrintQueue(customDir);
+  }
+  if (!defaultSqliteQueueInstance) {
+    defaultSqliteQueueInstance = new SqlitePrintQueue();
+  }
+  return defaultSqliteQueueInstance;
+}
+
+export const sqliteQueue: SqlitePrintQueue = new Proxy({} as SqlitePrintQueue, {
+  get(_target, prop) {
+    const instance = getSqliteQueue();
+    const val = (instance as any)[prop];
+    if (typeof val === 'function') {
+      return val.bind(instance);
+    }
+    return val;
+  },
+  set(_target, prop, value) {
+    const instance = getSqliteQueue();
+    (instance as any)[prop] = value;
+    return true;
+  },
+});
+

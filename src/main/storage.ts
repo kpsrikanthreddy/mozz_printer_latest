@@ -320,6 +320,18 @@ export class LocalStorageManager {
     return this.queue.getAttemptLogs(limit);
   }
 
+  public isReady(): boolean {
+    return this.queue ? this.queue.isReady() : false;
+  }
+
+  public getInitError(): Error | null {
+    return this.queue ? this.queue.getInitError() : null;
+  }
+
+  public getQueue(): SqlitePrintQueue {
+    return this.queue;
+  }
+
   public close(): void {
     if (this.queue) {
       this.queue.close();
@@ -327,4 +339,57 @@ export class LocalStorageManager {
   }
 }
 
-export const localStore = new LocalStorageManager();
+let defaultStoreInstance: LocalStorageManager | null = null;
+let defaultStoreInitError: Error | null = null;
+
+export function initStorage(customDir?: string): {
+  store: LocalStorageManager;
+  error: Error | null;
+} {
+  if (defaultStoreInstance && !customDir) {
+    return { store: defaultStoreInstance, error: defaultStoreInitError };
+  }
+
+  try {
+    const manager = new LocalStorageManager(customDir);
+    if (!customDir) {
+      defaultStoreInstance = manager;
+    }
+    if (!manager.isReady()) {
+      const err =
+        manager.getInitError() ||
+        new Error('SQLite database failed to initialize or verify schema.');
+      if (!customDir) defaultStoreInitError = err;
+      return { store: manager, error: err };
+    }
+    if (!customDir) defaultStoreInitError = null;
+    return { store: manager, error: null };
+  } catch (err: any) {
+    const errorObj = err instanceof Error ? err : new Error(String(err));
+    if (!customDir) defaultStoreInitError = errorObj;
+    const fallbackManager = defaultStoreInstance || new LocalStorageManager(customDir);
+    return { store: fallbackManager, error: errorObj };
+  }
+}
+
+export const localStore: LocalStorageManager = new Proxy({} as LocalStorageManager, {
+  get(_target, prop) {
+    if (!defaultStoreInstance) {
+      initStorage();
+    }
+    const target = defaultStoreInstance!;
+    const val = (target as any)[prop];
+    if (typeof val === 'function') {
+      return val.bind(target);
+    }
+    return val;
+  },
+  set(_target, prop, value) {
+    if (!defaultStoreInstance) {
+      initStorage();
+    }
+    (defaultStoreInstance as any)[prop] = value;
+    return true;
+  },
+});
+

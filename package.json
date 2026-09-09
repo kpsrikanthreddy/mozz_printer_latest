@@ -13,7 +13,7 @@
     "build:win": "npm run build:electron && electron-builder --win --x64",
     "build:win:portable": "npm run build:electron && electron-builder --win portable --x64",
     "lint": "tsc --noEmit",
-    "test": "tsc -p tsconfig.node.json && node dist/test/stage3Requirements.test.js && node dist/test/agentPrint.test.js",
+    "test": "tsc -p tsconfig.node.json && node dist/test/stage3Requirements.test.js && node dist/test/agentPrint.test.js && node dist/test/diagnostics.test.js",
     "test:agent": "tsc -p tsconfig.node.json && node dist/test/agentPrint.test.js"
   },
   "keywords": [

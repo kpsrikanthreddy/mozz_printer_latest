@@ -7,7 +7,19 @@ import {
   nativeImage,
   shell,
 } from 'electron';
+import fs from 'fs';
 import path from 'path';
+
+import {
+  initProcessErrorHandlers,
+  attachWebContentsDiagnostics,
+  logMain,
+  showFatalErrorDialog,
+  getMainLogPath,
+} from './diagnostics.js';
+
+// 1. Register process.on('uncaughtException'), process.on('unhandledRejection') BEFORE initializing storage
+initProcessErrorHandlers();
 
 // Standardize backend configuration in Electron main process:
 // Prioritizes MOZZ_API_URL, then STARTERS4U_API_URL.
@@ -17,7 +29,27 @@ if (!process.env.MOZZ_API_URL && !process.env.STARTERS4U_API_URL) {
     process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://www.starters4u.in';
 }
 
-import { localStore } from './storage.js';
+// 2. Initialize SQLite storage and display error dialog if it fails instead of silently exiting
+import { initStorage, localStore } from './storage.js';
+
+logMain('INFO', 'Initializing local SQLite database and preferences storage...');
+const storageInit = initStorage();
+if (storageInit.error || !storageInit.store.isReady()) {
+  const err =
+    storageInit.error ||
+    storageInit.store.getInitError() ||
+    new Error('SQLite database failed to open or verify schema.');
+  logMain('FATAL', 'SQLite initialization failed during startup', err);
+  showFatalErrorDialog(
+    'Mozz Print Agent - Database Initialization Error',
+    `Failed to initialize local SQLite database required for thermal print spooling and job idempotency:\n\n${err.message}`,
+    err
+  );
+  app.quit();
+} else {
+  logMain('INFO', 'Local SQLite storage verified and ready.');
+}
+
 import { printerManager } from './printerManager.js';
 import { silentPrintService } from './silentPrintService.js';
 import { agentClient } from './sseClient.js';
@@ -35,7 +67,32 @@ let tray: Tray | null = null;
 let isQuitting = false;
 const startTimeMs = Date.now();
 
+// Packaged-app smoke test detection
+const isSmokeTest =
+  process.argv.includes('--smoke-test') || process.env.MOZZ_SMOKE_TEST === '1';
+
+if (isSmokeTest) {
+  logMain('INFO', '*** SMOKE TEST MODE ACTIVATED ***');
+  try {
+    app.disableHardwareAcceleration();
+  } catch {
+    // ignore
+  }
+
+  // Safety timer for CI smoke test
+  const smokeTimer = setTimeout(() => {
+    logMain('FATAL', 'SMOKE TEST TIMEOUT: Main window failed to reach ready-to-show within 30 seconds');
+    showFatalErrorDialog(
+      'Mozz Print Agent - Smoke Test Timeout',
+      'Main window failed to reach ready-to-show within 30 seconds.'
+    );
+    app.exit(1);
+  }, 30000);
+  smokeTimer.unref();
+}
+
 function createMainWindow(): BrowserWindow {
+  logMain('INFO', 'Creating main application BrowserWindow...');
   const win = new BrowserWindow({
     width: 1120,
     height: 760,
@@ -52,17 +109,40 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
+  // Attach render-process-gone and did-fail-load handlers
+  attachWebContentsDiagnostics(win, 'Main POS Window');
+
   // Load UI: dev server in development, built index.html in production
   const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    logMain('INFO', `Loading Vite dev server URL: ${process.env.VITE_DEV_SERVER_URL}`);
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
     const rendererPath = path.join(__dirname, '../renderer/index.html');
+    logMain('INFO', `Loading production renderer file: ${rendererPath}`);
+    if (!fs.existsSync(rendererPath)) {
+      const missingErr = new Error(`Production renderer index.html missing at ${rendererPath}`);
+      logMain('FATAL', missingErr.message);
+      showFatalErrorDialog(
+        'Mozz Print Agent - Missing UI Files',
+        `The user interface bundle was not found at:\n${rendererPath}\n\nPlease rebuild or reinstall the application.`,
+        missingErr
+      );
+    }
     win.loadFile(rendererPath);
   }
 
   win.once('ready-to-show', () => {
-    win.show();
+    logMain('INFO', 'Main window reached ready-to-show state.');
+    if (!isSmokeTest) {
+      win.show();
+    } else {
+      logMain('INFO', '[SMOKE TEST] ready-to-show confirmed! Exiting with code 0.');
+      console.log('SMOKE_TEST_SUCCESS: Main window reached ready-to-show.');
+      setTimeout(() => {
+        app.exit(0);
+      }, 500);
+    }
   });
 
   win.on('close', (event: any) => {
