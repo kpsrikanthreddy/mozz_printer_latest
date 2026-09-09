@@ -148,13 +148,176 @@ jobs:
           Write-Host "Packaged app smoke test SUCCEEDED: Main window reached ready-to-show!"
 
       - name: Build Windows installer
-        run: npm run build:win -- --publish never
+        run: npm run build:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: Generate size report
+        shell: pwsh
+        run: |
+          Write-Host "============================================================"
+          Write-Host "📊 MOZZ PRINT AGENT WINDOWS PACKAGING & SIZE REPORT"
+          Write-Host "============================================================"
+          
+          # 1. NSIS Installer Size
+          $installer = Get-ChildItem -Path "release" -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($installer) {
+            $instMB = [math]::Round($installer.Length / 1MB, 2)
+            $instKB = [math]::Round($installer.Length / 1KB, 2)
+            Write-Host "NSIS Installer: $($installer.Name)"
+            Write-Host "  Path: $($installer.FullName)"
+            Write-Host "  Size: $instMB MB ($instKB KB / $($installer.Length) bytes)"
+          } else {
+            throw "NSIS installer (*Setup*.exe) not found in release directory!"
+          }
+
+          # 2. Unpacked Application Size
+          $unpackedDir = "release\win-unpacked"
+          if (Test-Path $unpackedDir) {
+            $unpackedFiles = Get-ChildItem -Path $unpackedDir -Recurse -File
+            $unpackedBytes = ($unpackedFiles | Measure-Object -Property Length -Sum).Sum
+            $unpackedMB = [math]::Round($unpackedBytes / 1MB, 2)
+            Write-Host "`nUnpacked Application Directory ($unpackedDir):"
+            Write-Host "  Total Files: $($unpackedFiles.Count)"
+            Write-Host "  Total Size: $unpackedMB MB ($unpackedBytes bytes)"
+          } else {
+            Write-Warning "Unpacked directory $unpackedDir does not exist."
+          }
+
+          # 3. app.asar Size
+          $asar = Get-ChildItem -Path "release" -Filter "app.asar" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($asar) {
+            $asarMB = [math]::Round($asar.Length / 1MB, 2)
+            $asarKB = [math]::Round($asar.Length / 1KB, 2)
+            Write-Host "`napp.asar Archive:"
+            Write-Host "  Path: $($asar.FullName)"
+            Write-Host "  Size: $asarMB MB ($asarKB KB / $($asar.Length) bytes)"
+          } else {
+            Write-Warning "app.asar file not found."
+          }
+
+          # 4. Unpacked better-sqlite3 Size
+          $sqliteDir = Get-ChildItem -Path "release" -Filter "better-sqlite3" -Directory -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($sqliteDir) {
+            $sqliteFiles = Get-ChildItem -Path $sqliteDir.FullName -Recurse -File
+            $sqliteBytes = ($sqliteFiles | Measure-Object -Property Length -Sum).Sum
+            $sqliteMB = [math]::Round($sqliteBytes / 1MB, 2)
+            $sqliteKB = [math]::Round($sqliteBytes / 1KB, 2)
+            Write-Host "`nUnpacked better-sqlite3 Module:"
+            Write-Host "  Path: $($sqliteDir.FullName)"
+            Write-Host "  Size: $sqliteMB MB ($sqliteKB KB / $sqliteBytes bytes)"
+          } else {
+            Write-Warning "Unpacked better-sqlite3 directory not found."
+          }
+          Write-Host "============================================================"
+
+      - name: Verify, install and smoke test NSIS installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "release" -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $installer -or -not (Test-Path $installer.FullName)) {
+            throw "NSIS Setup installer (*Setup*.exe) was not found in release/ directory"
+          }
+          Write-Host "Found NSIS Setup installer: $($installer.FullName)"
+          
+          # Clean up any existing logs from previous smoke tests
+          Remove-Item -Path "$env:APPDATA\mozz-printer\logs\*" -Force -ErrorAction SilentlyContinue
+          
+          # Perform silent installation
+          Write-Host "Running silent installation: $($installer.FullName) /S"
+          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -PassThru -Wait
+          Write-Host "Installer finished with exit code: $($installProcess.ExitCode)"
+          if ($installProcess.ExitCode -ne 0) {
+            throw "Silent NSIS installation failed with exit code $($installProcess.ExitCode)"
+          }
+          
+          # Allow Windows shell time to register shortcuts
+          Start-Sleep -Seconds 2
+
+          # Locate installed shortcut or installed binary
+          $candidateShortcuts = @(
+            "$env:USERPROFILE\Desktop\Mozz Print Agent.lnk",
+            "$([Environment]::GetFolderPath('Desktop'))\Mozz Print Agent.lnk",
+            "$([Environment]::GetFolderPath('CommonDesktopDirectory'))\Mozz Print Agent.lnk",
+            "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Mozz Print Agent.lnk",
+            "$([Environment]::GetFolderPath('Programs'))\Mozz Print Agent.lnk"
+          )
+
+          $foundShortcut = $null
+          foreach ($sc in $candidateShortcuts) {
+            if (Test-Path $sc) {
+              $foundShortcut = $sc
+              Write-Host "Confirmed shortcut exists at: $sc"
+              break
+            }
+          }
+
+          $installedExePath = $null
+          if ($foundShortcut) {
+            $wsh = New-Object -ComObject WScript.Shell
+            $shortcutObj = $wsh.CreateShortcut($foundShortcut)
+            $installedExePath = $shortcutObj.TargetPath
+            Write-Host "Resolved shortcut target executable: $installedExePath"
+          }
+
+          # Fallback check standard install directories if shortcut is delayed
+          if (-not $installedExePath -or -not (Test-Path $installedExePath)) {
+            Write-Host "Searching standard per-user program installation directories..."
+            $foundExe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Filter "*Mozz*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $foundExe) {
+              $foundExe = Get-ChildItem -Path "$env:ProgramFiles" -Filter "*Mozz*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+            if ($foundExe) {
+              $installedExePath = $foundExe.FullName
+            }
+          }
+
+          if (-not $installedExePath -or -not (Test-Path $installedExePath)) {
+            throw "Installed application executable target could not be verified on disk."
+          }
+          Write-Host "Verified installed application executable exists at: $installedExePath"
+
+          # Launch the installed executable to confirm window reaches ready-to-show
+          Write-Host "Launching installed executable with --smoke-test: $installedExePath"
+          $startTime = Get-Date
+          $appProc = Start-Process -FilePath $installedExePath -ArgumentList "--smoke-test" -PassThru -NoNewWindow
+          $timeoutMs = 45000
+          $finished = $appProc.WaitForExit($timeoutMs)
+          $elapsed = ((Get-Date) - $startTime).TotalSeconds
+          Write-Host "Installed app smoke test process duration: $elapsed seconds"
+
+          $logFile = Get-ChildItem -Path "$env:APPDATA" -Filter "main.log" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          if (-not $finished) {
+            Write-Host "Process did not exit within $($timeoutMs / 1000)s. Forcing process shutdown..."
+            Stop-Process -Id $appProc.Id -Force
+            if ($logFile) {
+              Write-Host "=== Diagnostic Log ($($logFile.FullName)) ==="
+              Get-Content $logFile.FullName
+            }
+            throw "Installed app smoke test FAILED: Timed out waiting for ready-to-show."
+          }
+
+          Write-Host "Installed app exited with code: $($appProc.ExitCode)"
+          if ($logFile) {
+            Write-Host "=== Diagnostic Log ($($logFile.FullName)) ==="
+            Get-Content $logFile.FullName
+            $logContent = Get-Content $logFile.FullName -Raw
+            if (-not ($logContent -match "ready-to-show confirmed")) {
+              throw "Installed app smoke test FAILED: Application exited before ready-to-show was confirmed!"
+            }
+          } else {
+            throw "Installed app smoke test FAILED: Diagnostic log main.log was not created."
+          }
+
+          if ($appProc.ExitCode -ne 0) {
+            throw "Installed app smoke test FAILED with exit code $($appProc.ExitCode)"
+          }
+          Write-Host "Installed app smoke test SUCCEEDED: Main window reached ready-to-show!"
+
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: mozz-printer-windows
-          path: release/*.exe
+          name: mozz-printer-windows-setup
+          path: release/*Setup*.exe
           if-no-files-found: error

@@ -17,7 +17,7 @@ export default defineConfig({
   base: './',
   root: path.resolve(__dirname, 'src/renderer'),
   build: {
-    outDir: path.resolve(__dirname, 'dist'),
+    outDir: path.resolve(__dirname, 'dist/renderer'),
     emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
@@ -27,5 +27,6 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
+    strictPort: true,
   },
 });
