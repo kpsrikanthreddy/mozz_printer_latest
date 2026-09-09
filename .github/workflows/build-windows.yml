@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   build-windows:
     runs-on: windows-2022
@@ -91,6 +94,7 @@ jobs:
         run: npm run build:win -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify packaged native dependency
         shell: pwsh
