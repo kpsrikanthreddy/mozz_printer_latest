@@ -14,7 +14,8 @@
     "build:win:portable": "npm run build:electron && electron-builder --win portable --x64 --publish never",
     "rebuild:native": "electron-rebuild --force --only better-sqlite3 --arch=x64",
     "lint": "tsc --noEmit",
-    "test": "tsc -p tsconfig.node.json && node dist/test/stage3Requirements.test.js && node dist/test/agentPrint.test.js && node dist/test/diagnostics.test.js",
+    "test": "tsc -p tsconfig.node.json && node scripts/run-tests.cjs",
+    "test:electron-sqlite": "node scripts/run-electron-sqlite-smoke-test.cjs",
     "test:agent": "tsc -p tsconfig.node.json && node dist/test/agentPrint.test.js"
   },
   "keywords": [
@@ -28,7 +29,7 @@
   "author": "Starters4U Engineering",
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "12.11.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
@@ -39,7 +40,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
-    "electron": "^34.0.0",
+    "electron": "34.5.8",
     "electron-builder": "^25.1.8",
     "lucide-react": "^0.546.0",
     "postcss": "^8.4.49",

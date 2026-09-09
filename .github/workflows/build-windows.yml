@@ -36,17 +36,11 @@ jobs:
           Write-Host "Installed Rollup version: $rollupVersion"
           npm install --no-save --no-package-lock "@rollup/rollup-win32-x64-msvc@$rollupVersion"
 
-      - name: TypeScript checks
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
-
       - name: Rebuild better-sqlite3 for Electron
         shell: pwsh
         run: |
-          $electronVersion = node -p "require('./node_modules/electron/package.json').version"
-          Write-Host "Electron version: $electronVersion"
+          $electronVersion = "34.5.8"
+          Write-Host "Rebuilding better-sqlite3 explicitly for Electron $electronVersion (x64)..."
 
           npm exec -- electron-rebuild `
             --force `
@@ -55,7 +49,7 @@ jobs:
             --arch x64
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Electron native dependency rebuild failed"
+            throw "Electron native dependency rebuild failed with exit code $LASTEXITCODE"
           }
 
       - name: Verify better-sqlite3 Electron binary
@@ -75,6 +69,23 @@ jobs:
           }
 
           Write-Host "Native binary generated: $($binary.FullName)"
+
+      - name: Electron-runtime SQLite smoke test
+        shell: pwsh
+        run: |
+          node scripts/run-electron-sqlite-smoke-test.cjs
+          if ($LASTEXITCODE -ne 0) {
+            throw "Electron-runtime SQLite smoke test FAILED with exit code $LASTEXITCODE"
+          }
+
+      - name: TypeScript checks
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build renderer
+        run: npm run build:renderer
 
       - name: Build Windows installer
         run: npm run build:win -- --publish never
@@ -309,9 +320,37 @@ jobs:
           }
           Write-Host "Installed app smoke test SUCCEEDED: Main window reached ready-to-show!"
 
+      - name: Collect diagnostic logs
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "diagnostic-logs" | Out-Null
+          $appDataLogs = Get-ChildItem -Path "$env:APPDATA\mozz-printer" -Filter "*.log" -Recurse -ErrorAction SilentlyContinue
+          if ($appDataLogs) {
+            $appDataLogs | ForEach-Object {
+              Copy-Item $_.FullName -Destination "diagnostic-logs/$($_.Name)" -Force
+              Write-Host "Collected diagnostic log: $($_.FullName)"
+            }
+          }
+          $localLogs = Get-ChildItem -Path "logs" -Filter "*.log" -Recurse -ErrorAction SilentlyContinue
+          if ($localLogs) {
+            $localLogs | ForEach-Object {
+              Copy-Item $_.FullName -Destination "diagnostic-logs/local-$($_.Name)" -Force
+              Write-Host "Collected local log: $($_.FullName)"
+            }
+          }
+
       - name: Upload Windows installer
         uses: actions/upload-artifact@v6
         with:
           name: mozz-printer-windows-setup
           path: release/*Setup*.exe
           if-no-files-found: error
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mozz-printer-diagnostic-logs
+          path: diagnostic-logs/*.log
+          if-no-files-found: ignore
