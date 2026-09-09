@@ -6,59 +6,78 @@ import { generateKotHtml, generateBillHtml } from '../main/ticketTemplates.js';
 import { SilentPrintService } from '../main/silentPrintService.js';
 import type { KotTicketPayload, BillTicketPayload, PrinterConfig } from '../types/index.js';
 
+async function removeDirWithRetry(dirPath: string, maxRetries = 5, retryDelayMs = 50): Promise<void> {
+  if (!fs.existsSync(dirPath)) return;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      return;
+    } catch (err: any) {
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+}
+
 async function runDesktopAgentTests() {
   console.log('=== RUNNING MOZZ PRINT AGENT (STAGE 3) TEST SUITE ===\n');
 
-  // Test 1: Local Storage Idempotency & Persistence
-  console.log('[Test 1] Testing Local Storage and Duplicate Print Prevention...');
   const testStorageDir = path.join(process.cwd(), 'temp_test_storage');
   if (fs.existsSync(testStorageDir)) {
-    fs.rmSync(testStorageDir, { recursive: true, force: true });
+    await removeDirWithRetry(testStorageDir);
   }
 
-  const store = new LocalStorageManager(testStorageDir);
-  const initialSettings = store.getSettings();
-  assert.ok(initialSettings, 'Settings should load default values');
+  let store: LocalStorageManager | null = null;
+  let reloadedStore: LocalStorageManager | null = null;
 
-  store.saveSettings({
-    restaurantId: 'rest_test_01',
-    branchId: 'branch_madhapur_01',
-    mockPrintersEnabled: true,
-  });
+  try {
+    // Test 1: Local Storage Idempotency & Persistence
+    console.log('[Test 1] Testing Local Storage and Duplicate Print Prevention...');
+    store = new LocalStorageManager(testStorageDir);
+    const initialSettings = store.getSettings();
+    assert.ok(initialSettings, 'Settings should load default values');
 
-  const updatedSettings = store.getSettings();
-  assert.strictEqual(updatedSettings.restaurantId, 'rest_test_01', 'Restaurant ID must persist');
-  assert.strictEqual(updatedSettings.mockPrintersEnabled, true, 'Mock mode setting must persist');
+    store.saveSettings({
+      restaurantId: 'rest_test_01',
+      branchId: 'branch_madhapur_01',
+      mockPrintersEnabled: true,
+    });
 
-  // Verify printer configurations
-  const testConfig: PrinterConfig = {
-    station: 'kitchen_pizza',
-    printerName: 'MOCK_PRINTER',
-    paperWidthMm: 58,
-    copies: 2,
-    isAutoPrint: true,
-  };
-  store.savePrinterConfig(testConfig);
-  const retrievedConfig = store.getStationPrinter('kitchen_pizza');
-  assert.strictEqual(retrievedConfig?.paperWidthMm, 58, 'Station paper width must persist');
-  assert.strictEqual(retrievedConfig?.copies, 2, 'Station copies count must persist');
+    const updatedSettings = store.getSettings();
+    assert.strictEqual(updatedSettings.restaurantId, 'rest_test_01', 'Restaurant ID must persist');
+    assert.strictEqual(updatedSettings.mockPrintersEnabled, true, 'Mock mode setting must persist');
 
-  // Test Idempotency & Duplicate prevention
-  const sampleJobId = 'job_uuid_9999';
-  assert.strictEqual(store.isJobCompleted(sampleJobId), false, 'New job must not be marked completed');
-  store.markJobCompleted(sampleJobId);
-  assert.strictEqual(store.isJobCompleted(sampleJobId), true, 'Job must be marked completed');
+    // Verify printer configurations
+    const testConfig: PrinterConfig = {
+      station: 'kitchen_pizza',
+      printerName: 'MOCK_PRINTER',
+      paperWidthMm: 58,
+      copies: 2,
+      isAutoPrint: true,
+    };
+    store.savePrinterConfig(testConfig);
+    const retrievedConfig = store.getStationPrinter('kitchen_pizza');
+    assert.strictEqual(retrievedConfig?.paperWidthMm, 58, 'Station paper width must persist');
+    assert.strictEqual(retrievedConfig?.copies, 2, 'Station copies count must persist');
 
-  // Simulate App Restart (Re-instantiating store with existing directory)
-  const reloadedStore = new LocalStorageManager(testStorageDir);
-  assert.strictEqual(
-    reloadedStore.isJobCompleted(sampleJobId),
-    true,
-    'Job completion MUST persist across agent restarts to prevent duplicate tickets!'
-  );
-  console.log('✓ Test 1 Passed: Local persistence & duplicate prevention verified.\n');
+    // Test Idempotency & Duplicate prevention
+    const sampleJobId = 'job_uuid_9999';
+    assert.strictEqual(store.isJobCompleted(sampleJobId), false, 'New job must not be marked completed');
+    store.markJobCompleted(sampleJobId);
+    assert.strictEqual(store.isJobCompleted(sampleJobId), true, 'Job must be marked completed');
 
-  // Test 2: Thermal KOT Ticket Generation
+    // Simulate App Restart (Re-instantiating store with existing directory)
+    reloadedStore = new LocalStorageManager(testStorageDir);
+    assert.strictEqual(
+      reloadedStore.isJobCompleted(sampleJobId),
+      true,
+      'Job completion MUST persist across agent restarts to prevent duplicate tickets!'
+    );
+    console.log('✓ Test 1 Passed: Local persistence & duplicate prevention verified.\n');
+
+    // Test 2: Thermal KOT Ticket Generation
   console.log('[Test 2] Testing Thermal KOT Ticket Generation (58mm & 80mm)...');
   const kotPayload: KotTicketPayload = {
     restaurantName: 'Starters4U Test Kitchen',
@@ -213,11 +232,15 @@ async function runDesktopAgentTests() {
   };
   const testA4Result = await printService.executeTestPrint('BILL', a4Config, 'MOCK_PRINTER');
   assert.strictEqual(testA4Result.success, true, 'Mock print with A4_TEST profile must succeed');
-  console.log('✓ Test 6 Passed: "A4 Test Only" Canon G3010 profile, CSS positioning, and profile isolation verified.\n');
-
-  // Clean up test directory
-  if (fs.existsSync(testStorageDir)) {
-    fs.rmSync(testStorageDir, { recursive: true, force: true });
+    console.log('✓ Test 6 Passed: "A4 Test Only" Canon G3010 profile, CSS positioning, and profile isolation verified.\n');
+  } finally {
+    if (reloadedStore) {
+      reloadedStore.close();
+    }
+    if (store) {
+      store.close();
+    }
+    await removeDirWithRetry(testStorageDir);
   }
 
   console.log('=== ALL STAGE 4 DESKTOP PRINT AGENT TESTS PASSED SUCCESSFULLY! ===');

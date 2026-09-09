@@ -7,6 +7,21 @@ import { calculateReconnectDelay } from '../main/sseClient.js';
 import { LocalStorageManager } from '../main/storage.js';
 import type { PrintJob } from '../types/index.js';
 
+async function removeDirWithRetry(dirPath: string, maxRetries = 5, retryDelayMs = 50): Promise<void> {
+  if (!fs.existsSync(dirPath)) return;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      return;
+    } catch (err: any) {
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+}
+
 async function runStage3VerificationTests() {
   console.log('\n============================================================');
   console.log('🧪 RUNNING STAGE 3 CORRECTIVE VERIFICATION TEST SUITE');
@@ -14,13 +29,16 @@ async function runStage3VerificationTests() {
 
   const testTempDir = path.join(process.cwd(), 'temp_stage3_test_run');
   if (fs.existsSync(testTempDir)) {
-    fs.rmSync(testTempDir, { recursive: true, force: true });
+    await removeDirWithRetry(testTempDir);
   }
   fs.mkdirSync(testTempDir, { recursive: true });
 
-  // -------------------------------------------------------------------------
-  // 1. SECURE DEVICE TOKEN STORAGE TESTS
-  // -------------------------------------------------------------------------
+  let queue: SqlitePrintQueue | null = null;
+
+  try {
+    // -------------------------------------------------------------------------
+    // 1. SECURE DEVICE TOKEN STORAGE TESTS
+    // -------------------------------------------------------------------------
   console.log('▶ [Test 1] Secure Device-Token Storage Tests');
   const secureStorage = new SecureTokenStorage(testTempDir);
   const samplePlainToken = 'mozz_dev_tok_99887766554433221100aabbccddeeff';
@@ -63,7 +81,7 @@ async function runStage3VerificationTests() {
   // 2. SQLITE PRINT QUEUE & UNCERTAIN_RECOVERY TESTS
   // -------------------------------------------------------------------------
   console.log('▶ [Test 2] SQLite Print Queue & Crash Recovery Tests');
-  let queue = new SqlitePrintQueue(testTempDir);
+  queue = new SqlitePrintQueue(testTempDir);
 
   const sampleJob1: PrintJob = {
     id: 'job_test_001',
@@ -202,16 +220,15 @@ async function runStage3VerificationTests() {
   console.log(`  Calculated delays: [0]=${d0}ms, [1]=${d1}ms, [2]=${d2}ms, [3]=${d3}ms, [10]=${d10}ms`);
   console.log('  ✔ [Test 3 Passed] Exponential backoff with jitter calculation verified.\n');
 
-  // Clean up test sandbox
-  try {
-    fs.rmSync(testTempDir, { recursive: true, force: true });
-  } catch {
-    // ignore
-  }
-
   console.log('============================================================');
   console.log('🎉 ALL STAGE 3 CORRECTIVE TESTS PASSED SUCCESSFULLY!');
   console.log('============================================================\n');
+  } finally {
+    if (queue) {
+      queue.close();
+    }
+    await removeDirWithRetry(testTempDir);
+  }
 }
 
 runStage3VerificationTests().catch((err) => {

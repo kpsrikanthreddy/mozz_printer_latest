@@ -319,6 +319,12 @@ export class LocalStorageManager {
   public getAttemptLogs(limit = 200): PrintAttemptLog[] {
     return this.queue.getAttemptLogs(limit);
   }
+
+  public close(): void {
+    if (this.queue) {
+      this.queue.close();
+    }
+  }
 }
 
 export const localStore = new LocalStorageManager();
