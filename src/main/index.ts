@@ -31,25 +31,6 @@ if (!process.env.MOZZ_API_URL && !process.env.STARTERS4U_API_URL) {
 
 // 2. Initialize SQLite storage and display error dialog if it fails instead of silently exiting
 import { initStorage, localStore } from './storage.js';
-
-logMain('INFO', 'Initializing local SQLite database and preferences storage...');
-const storageInit = initStorage();
-if (storageInit.error || !storageInit.store.isReady()) {
-  const err =
-    storageInit.error ||
-    storageInit.store.getInitError() ||
-    new Error('SQLite database failed to open or verify schema.');
-  logMain('FATAL', 'SQLite initialization failed during startup', err);
-  showFatalErrorDialog(
-    'Mozz Print Agent - Database Initialization Error',
-    `Failed to initialize local SQLite database required for thermal print spooling and job idempotency:\n\n${err.message}`,
-    err
-  );
-  app.quit();
-} else {
-  logMain('INFO', 'Local SQLite storage verified and ready.');
-}
-
 import { printerManager } from './printerManager.js';
 import { silentPrintService } from './silentPrintService.js';
 import { agentClient } from './sseClient.js';
@@ -65,6 +46,7 @@ import type {
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let readyToShowReached = false;
 const startTimeMs = Date.now();
 
 // Packaged-app smoke test detection
@@ -86,9 +68,30 @@ if (isSmokeTest) {
       'Mozz Print Agent - Smoke Test Timeout',
       'Main window failed to reach ready-to-show within 30 seconds.'
     );
-    app.exit(1);
+    process.exit(1);
   }, 30000);
   smokeTimer.unref();
+}
+
+logMain('INFO', 'Initializing local SQLite database and preferences storage...');
+const storageInit = initStorage();
+if (storageInit.error || !storageInit.store.isReady()) {
+  const err =
+    storageInit.error ||
+    storageInit.store.getInitError() ||
+    new Error('SQLite database failed to open or verify schema.');
+  logMain('FATAL', 'SQLite initialization failed during startup', err);
+  if (!isSmokeTest) {
+    showFatalErrorDialog(
+      'Mozz Print Agent - Database Initialization Error',
+      `Failed to initialize local SQLite database required for thermal print spooling and job idempotency:\n\n${err.message}`,
+      err
+    );
+  }
+  process.exitCode = 1;
+  app.exit(1);
+} else {
+  logMain('INFO', 'Local SQLite storage verified and ready.');
 }
 
 function createMainWindow(): BrowserWindow {
@@ -133,6 +136,7 @@ function createMainWindow(): BrowserWindow {
   }
 
   win.once('ready-to-show', () => {
+    readyToShowReached = true;
     logMain('INFO', 'Main window reached ready-to-show state.');
     if (!isSmokeTest) {
       win.show();
@@ -569,5 +573,12 @@ if (!gotSingleInstanceLock) {
   app.on('before-quit', () => {
     isQuitting = true;
     agentClient.stop();
+  });
+
+  app.on('will-quit', () => {
+    if (isSmokeTest && !readyToShowReached) {
+      logMain('FATAL', 'Application exited prematurely before reaching ready-to-show.');
+      process.exit(1);
+    }
   });
 }
