@@ -8,7 +8,10 @@ on:
 
 jobs:
   verify:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    env:
+      GYP_MSVS_VERSION: "2022"
+      npm_config_msvs_version: "2022"
 
     steps:
       - name: Checkout repository
