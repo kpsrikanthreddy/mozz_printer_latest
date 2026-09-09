@@ -12,6 +12,7 @@
     "build:electron": "vite build && tsc -p tsconfig.node.json",
     "build:win": "npm run build:electron && electron-builder --win nsis --x64 --publish never",
     "build:win:portable": "npm run build:electron && electron-builder --win portable --x64 --publish never",
+    "rebuild:native": "electron-rebuild --force --only better-sqlite3 --arch=x64",
     "lint": "tsc --noEmit",
     "test": "tsc -p tsconfig.node.json && node dist/test/stage3Requirements.test.js && node dist/test/agentPrint.test.js && node dist/test/diagnostics.test.js",
     "test:agent": "tsc -p tsconfig.node.json && node dist/test/agentPrint.test.js"
@@ -30,6 +31,7 @@
     "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.14.0",
     "@types/react": "18.3.18",
@@ -55,6 +57,7 @@
     "directories": {
       "output": "release"
     },
+    "npmRebuild": false,
     "asar": true,
     "compression": "maximum",
     "files": [

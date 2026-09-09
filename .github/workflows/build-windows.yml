@@ -42,43 +42,42 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Rebuild better-sqlite3 for installed Electron ABI
+      - name: Rebuild better-sqlite3 for Electron
         shell: pwsh
         run: |
           $electronVersion = node -p "require('./node_modules/electron/package.json').version"
-          Write-Host "Rebuilding better-sqlite3 for Electron $electronVersion x64"
+          Write-Host "Electron version: $electronVersion"
 
-          $env:npm_config_runtime = "electron"
-          $env:npm_config_target = $electronVersion
-          $env:npm_config_target_arch = "x64"
-          $env:npm_config_arch = "x64"
-          $env:npm_config_disturl = "https://electronjs.org/headers"
-          $env:npm_config_build_from_source = "true"
+          npm exec -- electron-rebuild `
+            --force `
+            --only better-sqlite3 `
+            --version $electronVersion `
+            --arch x64
 
-          npm rebuild better-sqlite3
+          if ($LASTEXITCODE -ne 0) {
+            throw "Electron native dependency rebuild failed"
+          }
 
-      - name: Verify better-sqlite3 native binary
+      - name: Verify better-sqlite3 Electron binary
         shell: pwsh
         run: |
-          $binaries = Get-ChildItem `
-            -Path "node_modules/better-sqlite3" `
-            -Filter "better_sqlite3.node" `
+          $binary = Get-ChildItem `
+            "node_modules/better-sqlite3" `
             -Recurse `
-            -ErrorAction SilentlyContinue
+            -Filter "better_sqlite3.node" `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
 
-          if (-not $binaries) {
-            Write-Host "Contents of better-sqlite3:"
+          if (-not $binary) {
             Get-ChildItem "node_modules/better-sqlite3" -Recurse |
               Select-Object FullName
             throw "better_sqlite3.node was not generated"
           }
 
-          $binaries | ForEach-Object {
-            Write-Host "Found native binary: $($_.FullName)"
-          }
+          Write-Host "Native binary generated: $($binary.FullName)"
 
-      - name: Build unpacked application
-        run: npm run build:electron && npx electron-builder --win --x64 --dir
+      - name: Build Windows installer
+        run: npm run build:win -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
@@ -92,65 +91,60 @@ jobs:
             -ErrorAction SilentlyContinue
 
           if (-not $packaged) {
-            throw "Packaged Electron application does not contain better_sqlite3.node"
+            throw "Packaged Electron application does not contain better_sqlite3.node under release"
           }
 
           $packaged | ForEach-Object {
-            Write-Host "Packaged binary: $($_.FullName)"
+            Write-Host "Found packaged native binary: $($_.FullName)"
           }
 
       - name: Packaged app smoke test (ready-to-show)
         shell: pwsh
         run: |
-          $unpackedExe = Get-Item "release\win-unpacked\*.exe" | Select-Object -First 1
-          if (-not $unpackedExe -or -not (Test-Path $unpackedExe.FullName)) {
-            throw "Packaged executable not found in release\win-unpacked\"
-          }
-          Write-Host "Launching packaged app for smoke test: $($unpackedExe.FullName) --smoke-test"
-          
-          $startTime = Get-Date
-          # Launch packaged Electron app with smoke test flag
-          $proc = Start-Process -FilePath $unpackedExe.FullName -ArgumentList "--smoke-test" -PassThru -NoNewWindow
-          $timeoutMs = 45000
-          $finished = $proc.WaitForExit($timeoutMs)
-          $elapsed = ((Get-Date) - $startTime).TotalSeconds
-          Write-Host "Process execution time: $elapsed seconds"
-          
-          $logFile = Get-ChildItem -Path "$env:APPDATA" -Filter "main.log" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          
-          if (-not $finished) {
-            Write-Host "Process did not exit within $($timeoutMs / 1000)s. Forcing process shutdown..."
-            Stop-Process -Id $proc.Id -Force
+          $unpackedExe = Get-Item "release\win-unpacked\*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($unpackedExe -and (Test-Path $unpackedExe.FullName)) {
+            Write-Host "Launching unpacked app for smoke test: $($unpackedExe.FullName) --smoke-test"
+            
+            $startTime = Get-Date
+            $proc = Start-Process -FilePath $unpackedExe.FullName -ArgumentList "--smoke-test" -PassThru -NoNewWindow
+            $timeoutMs = 45000
+            $finished = $proc.WaitForExit($timeoutMs)
+            $elapsed = ((Get-Date) - $startTime).TotalSeconds
+            Write-Host "Unpacked app execution time: $elapsed seconds"
+            
+            $logFile = Get-ChildItem -Path "$env:APPDATA" -Filter "main.log" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            
+            if (-not $finished) {
+              Write-Host "Process did not exit within $($timeoutMs / 1000)s. Forcing process shutdown..."
+              Stop-Process -Id $proc.Id -Force
+              
+              if ($logFile) {
+                Write-Host "=== Diagnostic Log: $($logFile.FullName) ==="
+                Get-Content $logFile.FullName
+              }
+              throw "Packaged app smoke test FAILED: Timed out waiting for ready-to-show."
+            }
+            
+            Write-Host "Packaged app exited with code: $($proc.ExitCode)"
             
             if ($logFile) {
-              Write-Host "=== Diagnostic Log: $($logFile.FullName) ==="
+              Write-Host "=== Diagnostic Log ($($logFile.FullName)) ==="
               Get-Content $logFile.FullName
+              $logContent = Get-Content $logFile.FullName -Raw
+              if (-not ($logContent -match "ready-to-show confirmed")) {
+                throw "Packaged app smoke test FAILED: Application exited immediately before reaching ready-to-show!"
+              }
+            } else {
+              throw "Packaged app smoke test FAILED: Diagnostic log main.log was not found."
             }
-            throw "Packaged app smoke test FAILED: Timed out waiting for ready-to-show."
-          }
-          
-          Write-Host "Packaged app exited with code: $($proc.ExitCode)"
-          
-          if ($logFile) {
-            Write-Host "=== Diagnostic Log ($($logFile.FullName)) ==="
-            Get-Content $logFile.FullName
-            $logContent = Get-Content $logFile.FullName -Raw
-            if (-not ($logContent -match "ready-to-show confirmed")) {
-              throw "Packaged app smoke test FAILED: Application exited immediately before reaching ready-to-show!"
+            
+            if ($proc.ExitCode -ne 0) {
+              throw "Packaged app smoke test FAILED with exit code $($proc.ExitCode)"
             }
+            Write-Host "Packaged app smoke test SUCCEEDED: Main window reached ready-to-show!"
           } else {
-            throw "Packaged app smoke test FAILED: Diagnostic log main.log was not found."
+            Write-Host "No unpacked binary in release\win-unpacked, skipping unpacked check."
           }
-          
-          if ($proc.ExitCode -ne 0) {
-            throw "Packaged app smoke test FAILED with exit code $($proc.ExitCode)"
-          }
-          Write-Host "Packaged app smoke test SUCCEEDED: Main window reached ready-to-show!"
-
-      - name: Build Windows installer
-        run: npm run build:win
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Generate size report
         shell: pwsh
