@@ -265,7 +265,7 @@ export class SsePrintAgentClient {
       return;
     }
 
-    if (eventType === 'print_job' && dataStr) {
+    if (eventType === 'new-job' && dataStr) {
       try {
         const job: PrintJob = JSON.parse(dataStr);
         console.log(`[AgentClient] [SSE] Received print job: ${job.id} (${job.jobType} - ${job.orderNumber})`);
@@ -273,6 +273,17 @@ export class SsePrintAgentClient {
       } catch (err) {
         console.error('[AgentClient] Failed to parse SSE print job payload:', err);
       }
+      return;
+    }
+
+    if (eventType === 'job-status-updated' && dataStr) {
+      try {
+        const update = JSON.parse(dataStr);
+        console.log(`[AgentClient] [SSE] Job status updated: ${update.id} -> ${update.status}`);
+      } catch (err) {
+        console.error('[AgentClient] Failed to parse SSE job-status-updated payload:', err);
+      }
+      return;
     }
   }
 
