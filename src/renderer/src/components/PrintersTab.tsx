@@ -141,10 +141,10 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({
     },
     {
       station: 'bar_beverage',
-      title: 'Beverage Bar & Shakes',
-      description: 'Drinks, mojitos, bubble teas, desserts, and beverage tickets.',
+      title: 'Chinese Special',
+      description: 'Chinese dishes, noodles, fried rice, manchurian, and wok tickets.',
       type: 'KOT',
-      icon: <Coffee className="w-5 h-5 text-cyan-400" />,
+      icon: <Utensils className="w-5 h-5 text-cyan-400" />,
       defaultPaper: 58,
     },
   ];

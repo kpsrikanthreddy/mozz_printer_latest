@@ -7,7 +7,10 @@ import {
   FileText,
   Search,
   CheckCircle,
+  Trash2,
+  XCircle,
 } from 'lucide-react';
+import { getStationDisplayLabel, formatDisplayOrderNumber } from '@/utils/orderUtils.js';
 import type { PrintJob } from '@/types/index.js';
 
 interface JobsTabProps {
@@ -15,6 +18,8 @@ interface JobsTabProps {
   failedJobs: PrintJob[];
   onRetryJob: (jobId: string) => void;
   onReprintJob: (jobId: string) => void;
+  onDeleteJob?: (job: PrintJob) => void;
+  onCancelJob?: (job: PrintJob) => void;
 }
 
 export const JobsTab: React.FC<JobsTabProps> = ({
@@ -22,6 +27,8 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   failedJobs,
   onRetryJob,
   onReprintJob,
+  onDeleteJob,
+  onCancelJob,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'pending' | 'failed'>('failed');
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,7 +36,9 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const displayList = activeSubTab === 'failed' ? failedJobs : pendingJobs;
   const filteredList = displayList.filter(
     (j) =>
-      j.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      formatDisplayOrderNumber(j.orderNumber).toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (j.orderNumber && j.orderNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (j.station && getStationDisplayLabel(j.station).toLowerCase().includes(searchQuery.toLowerCase())) ||
       (j.station && j.station.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (j.errorMessage && j.errorMessage.toLowerCase().includes(searchQuery.toLowerCase()))
   );
@@ -132,7 +141,9 @@ export const JobsTab: React.FC<JobsTabProps> = ({
 
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
-                    <span className="font-bold text-sm text-white">#{job.orderNumber}</span>
+                    <span className="font-bold text-sm text-white">
+                      {formatDisplayOrderNumber(job.orderNumber)}
+                    </span>
                     <span
                       className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${
                         job.jobType === 'KOT'
@@ -143,7 +154,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                       {job.jobType}
                     </span>
                     <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                      Station: {job.station || 'Default'}
+                      Station: {getStationDisplayLabel(job.station)}
                     </span>
                     <span className="text-xs text-slate-500">
                       Attempts: {job.retryCount || 0}
@@ -164,20 +175,45 @@ export const JobsTab: React.FC<JobsTabProps> = ({
               </div>
 
               <div className="flex items-center space-x-2.5 self-end md:self-center">
-                <button
-                  onClick={() => onRetryJob(job.id)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Retry Print</span>
-                </button>
+                {activeSubTab === 'pending' && onCancelJob && (
+                  <button
+                    onClick={() => onCancelJob(job)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/50 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/50 text-xs font-semibold transition-colors"
+                    title="Cancel active queue job"
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Cancel Print Job</span>
+                  </button>
+                )}
 
-                <button
-                  onClick={() => onReprintJob(job.id)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold transition-colors"
-                >
-                  <span>Reprint</span>
-                </button>
+                {activeSubTab === 'failed' && (
+                  <>
+                    <button
+                      onClick={() => onRetryJob(job.id)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Retry Print</span>
+                    </button>
+
+                    <button
+                      onClick={() => onReprintJob(job.id)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold transition-colors"
+                    >
+                      <span>Reprint</span>
+                    </button>
+
+                    {onDeleteJob && (
+                      <button
+                        onClick={() => onDeleteJob(job)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800/40 text-xs font-semibold transition-colors"
+                        title="Delete local print record"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           ))

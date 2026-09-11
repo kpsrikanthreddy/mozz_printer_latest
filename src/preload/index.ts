@@ -88,6 +88,12 @@ const api = {
     ipcRenderer.invoke('reprint-job', jobId, station),
   clearCompletedJobs: (): Promise<{ count: number }> =>
     ipcRenderer.invoke('clear-completed-jobs'),
+  deleteJob: (jobId: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('delete-job', jobId),
+  deleteJobs: (jobIds: string[]): Promise<{ count: number; success: boolean; error?: string }> =>
+    ipcRenderer.invoke('delete-jobs', jobIds),
+  cancelJob: (jobId: string, reason?: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('cancel-job', jobId, reason),
 
   // Window Controls
   openExternal: (url: string): Promise<void> =>

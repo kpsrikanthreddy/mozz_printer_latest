@@ -5,7 +5,8 @@ const fs = require('fs');
 const testFiles = [
   'dist/test/stage3Requirements.test.js',
   'dist/test/agentPrint.test.js',
-  'dist/test/diagnostics.test.js'
+  'dist/test/diagnostics.test.js',
+  'dist/test/orderNumberAndStation.test.js'
 ];
 
 let electronPath = null;

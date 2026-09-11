@@ -308,6 +308,18 @@ export class LocalStorageManager {
     return this.queue.clearCompletedJobs();
   }
 
+  public deleteJob(jobId: string): boolean {
+    return this.queue.deleteJob(jobId);
+  }
+
+  public deleteJobs(jobIds: string[]): number {
+    return this.queue.deleteJobs(jobIds);
+  }
+
+  public cancelJob(jobId: string, reason?: string): boolean {
+    return this.queue.cancelJob(jobId, reason);
+  }
+
   // ==========================================
   // ATTEMPT SPOOL LOGS (SQLITE)
   // ==========================================

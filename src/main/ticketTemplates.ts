@@ -1,4 +1,5 @@
 import type { KotTicketPayload, BillTicketPayload, PaperWidthMm } from '../types/index.js';
+import { formatDisplayOrderNumber, formatStationHeading } from '../utils/orderUtils.js';
 
 /**
  * Generates an isolated HTML page formatted specifically for thermal printer drivers.
@@ -109,11 +110,11 @@ export function generateKotHtml(payload: KotTicketPayload, paperWidthMm: PaperWi
 
         <div style="display: flex; justify-content: space-between; font-weight: bold;">
           <span>KOT: ${payload.kotNumber}</span>
-          <span>${payload.station || 'KITCHEN'}</span>
+          <span>${formatStationHeading(payload.station)}</span>
         </div>
 
         <div style="display: flex; justify-content: space-between; font-size: ${is58 ? '10px' : '11px'};">
-          <span>Ord: #${payload.orderNumber}</span>
+          <span>Ord: ${formatDisplayOrderNumber(payload.orderNumber)}</span>
           <span>${payload.orderType?.toUpperCase()}</span>
         </div>
 
@@ -266,7 +267,7 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
 
         <div class="row bold">
           <span>${payload.billNumber}</span>
-          <span>#${payload.orderNumber}</span>
+          <span>${formatDisplayOrderNumber(payload.orderNumber)}</span>
         </div>
         <div class="row" style="font-size: ${is58 ? '9px' : '10px'}; color: #333;">
           <span>${formattedDate}</span>

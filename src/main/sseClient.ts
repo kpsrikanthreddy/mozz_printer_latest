@@ -3,6 +3,7 @@ import https from 'https';
 import { URL } from 'url';
 import { localStore } from './storage.js';
 import { silentPrintService } from './silentPrintService.js';
+import { resolveOrderNumber } from '../utils/orderUtils.js';
 import type {
   PrintJob,
   AgentConnectionStatus,
@@ -267,8 +268,17 @@ export class SsePrintAgentClient {
 
     if (eventType === 'new-job' && dataStr) {
       try {
-        const job: PrintJob = JSON.parse(dataStr);
-        console.log(`[AgentClient] [SSE] Received print job: ${job.id} (${job.jobType} - ${job.orderNumber})`);
+        const rawJob: any = JSON.parse(dataStr);
+        const resolvedOrderNumber = resolveOrderNumber(rawJob);
+        const job: PrintJob = {
+          ...rawJob,
+          orderNumber: resolvedOrderNumber,
+          payload: {
+            ...(rawJob.payload || {}),
+            orderNumber: resolvedOrderNumber,
+          },
+        };
+        console.log(`[AgentClient] [SSE] Received print job: ${job.id} (${job.jobType} - #${job.orderNumber})`);
         this.processIncomingJob(job);
       } catch (err) {
         console.error('[AgentClient] Failed to parse SSE print job payload:', err);
@@ -412,20 +422,30 @@ export class SsePrintAgentClient {
     const settings = localStore.getSettings();
     const token = localStore.getDeviceToken();
 
+    const resolvedOrderNumber = resolveOrderNumber(job);
+    const normalizedJob: PrintJob = {
+      ...job,
+      orderNumber: resolvedOrderNumber,
+      payload: {
+        ...(job.payload || {}),
+        orderNumber: resolvedOrderNumber,
+      } as any,
+    };
+
     // 1. Duplicate Prevention & Local Idempotency Check
-    if (!forceReprint && localStore.isJobCompleted(job.id, job.idempotencyKey)) {
-      console.log(`[AgentClient] Job ${job.id} was already completed locally. Skipping to prevent duplicate ticket.`);
+    if (!forceReprint && localStore.isJobCompleted(normalizedJob.id, normalizedJob.idempotencyKey)) {
+      console.log(`[AgentClient] Job ${normalizedJob.id} was already completed locally. Skipping to prevent duplicate ticket.`);
       return true;
     }
 
     // Save job locally in SQLite
-    localStore.saveJob(job);
-    this.emitJobEvent('NEW_JOB', job);
+    localStore.saveJob(normalizedJob);
+    this.emitJobEvent('NEW_JOB', normalizedJob);
 
     // 2. Claim job on backend (Atomic lock)
     if (token && settings.apiUrl) {
       try {
-        const claimUrl = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/jobs/${job.id}/claim`;
+        const claimUrl = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/jobs/${normalizedJob.id}/claim`;
         const claimRes = await fetch(claimUrl, {
           method: 'POST',
           headers: {
@@ -435,17 +455,17 @@ export class SsePrintAgentClient {
         });
 
         if (claimRes.status === 409) {
-          console.warn(`[AgentClient] Job ${job.id} was already claimed by another device. Skipping.`);
+          console.warn(`[AgentClient] Job ${normalizedJob.id} was already claimed by another device. Skipping.`);
           return false;
         }
       } catch (err: any) {
-        console.warn(`[AgentClient] Network issue claiming job ${job.id}, proceeding with local execution:`, err.message);
+        console.warn(`[AgentClient] Network issue claiming job ${normalizedJob.id}, proceeding with local execution:`, err.message);
       }
     }
 
     // 3. Mark job as PRINTING locally in SQLite and on backend
-    localStore.updateJob(job.id, { status: 'PRINTING' });
-    this.emitJobEvent('JOB_UPDATED', { ...job, status: 'PRINTING' });
+    localStore.updateJob(normalizedJob.id, { status: 'PRINTING' });
+    this.emitJobEvent('JOB_UPDATED', { ...normalizedJob, status: 'PRINTING' });
 
     if (token && settings.apiUrl) {
       try {

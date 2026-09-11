@@ -219,7 +219,7 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
                 <option value="billing">Billing Counter</option>
                 <option value="kitchen_master">Kitchen Master</option>
                 <option value="kitchen_pizza">Pizza Section</option>
-                <option value="bar_beverage">Beverage Bar</option>
+                <option value="bar_beverage">Chinese Special</option>
               </select>
             </div>
 

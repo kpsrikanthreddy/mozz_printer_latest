@@ -48,8 +48,8 @@ const DEFAULT_PRINTERS: DiscoveredPrinter[] = [
   },
   {
     name: 'XPRINTER_XP58_Bar',
-    displayName: 'Xprinter XP-58 (Bar Beverage 58mm)',
-    description: 'Serial/USB thermal ticket printer for drinks and mocktails',
+    displayName: 'Xprinter XP-58 (Chinese Special 58mm)',
+    description: 'Serial/USB thermal ticket printer for Chinese dishes, noodles, and wok section',
     isDefault: false,
     isOnline: true,
   },
@@ -715,6 +715,37 @@ class BrowserPrintAgentStore {
     return { count: removed };
   }
 
+  deleteJob(jobId: string): { success: boolean } {
+    const beforeCount = this.data.jobs.length;
+    this.data.jobs = this.data.jobs.filter((j) => j.id !== jobId);
+    const removed = beforeCount !== this.data.jobs.length;
+    if (removed) {
+      this.save(this.data);
+    }
+    return { success: removed };
+  }
+
+  deleteJobs(jobIds: string[]): { count: number; success: boolean } {
+    const set = new Set(jobIds);
+    const beforeCount = this.data.jobs.length;
+    this.data.jobs = this.data.jobs.filter((j) => !set.has(j.id));
+    const count = beforeCount - this.data.jobs.length;
+    if (count > 0) {
+      this.save(this.data);
+    }
+    return { count, success: true };
+  }
+
+  cancelJob(jobId: string, reason = 'Cancelled by operator'): { success: boolean } {
+    const job = this.data.jobs.find((j) => j.id === jobId);
+    if (!job) return { success: false };
+    job.status = 'CANCELLED';
+    job.errorMessage = reason;
+    this.save(this.data);
+    this.dispatchJobEvent('JOB_UPDATED', job);
+    return { success: true };
+  }
+
   // Simulate incoming live print job from Cloud POS
   simulateIncomingOrder(): PrintJob {
     const orderNum = `S4U-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -842,6 +873,9 @@ export function initBrowserApi(): MozzPrinterAPI {
     retryJob: async (jobId) => store.retryJob(jobId),
     reprintJob: async (jobId, station) => store.reprintJob(jobId, station),
     clearCompletedJobs: async () => store.clearCompletedJobs(),
+    deleteJob: async (jobId) => store.deleteJob(jobId),
+    deleteJobs: async (jobIds) => store.deleteJobs(jobIds),
+    cancelJob: async (jobId, reason) => store.cancelJob(jobId, reason),
 
     // Window Controls
     openExternal: async (url) => {

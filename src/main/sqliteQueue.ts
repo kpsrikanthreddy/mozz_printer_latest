@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type DatabaseType from 'better-sqlite3';
+import { resolveOrderNumber } from '../utils/orderUtils.js';
 import type {
   PrintJob,
   PrintJobStatus,
@@ -79,6 +80,7 @@ export class SqlitePrintQueue {
       this.openDatabase();
       this.applyPragmas();
       this.createSchema();
+      this.backfillMissingOrderNumbers();
       this.performStartupRecovery();
       this.applyRetentionCleanup();
       this.initError = null;
@@ -182,6 +184,47 @@ export class SqlitePrintQueue {
         updated_at TEXT NOT NULL
       );
     `);
+  }
+
+  /**
+   * Migration / backfill-safe handling for existing SQLite records where order_number is missing or empty.
+   */
+  private backfillMissingOrderNumbers(): void {
+    if (!this.db) return;
+    try {
+      const rowsWithoutOrderNum = this.db
+        .prepare(
+          `SELECT id, order_id, order_number, payload_json FROM print_jobs WHERE order_number IS NULL OR trim(order_number) = '' OR order_number = '#'`
+        )
+        .all();
+
+      if (rowsWithoutOrderNum && rowsWithoutOrderNum.length > 0) {
+        const updateStmt = this.db.prepare(
+          `UPDATE print_jobs SET order_number = ?, updated_at = ? WHERE id = ?`
+        );
+        const now = new Date().toISOString();
+        const tx = this.db.transaction(() => {
+          for (const row of rowsWithoutOrderNum as any[]) {
+            let payload: any = {};
+            try {
+              payload = JSON.parse(row.payload_json || '{}');
+            } catch {
+              payload = {};
+            }
+            const resolved = resolveOrderNumber({
+              orderNumber: row.order_number,
+              orderId: row.order_id,
+              payload,
+            });
+            updateStmt.run(resolved || 'Unknown Order', now, row.id);
+          }
+        });
+        tx();
+        console.log(`[SqliteQueue] Backfilled order numbers for ${rowsWithoutOrderNum.length} existing print jobs.`);
+      }
+    } catch (bfErr) {
+      console.warn('[SqliteQueue] Warning during order_number backfill:', bfErr);
+    }
   }
 
   /**
@@ -326,7 +369,18 @@ export class SqlitePrintQueue {
 
     const now = new Date().toISOString();
     const localReceivedAt = job.localReceivedAt || now;
-    const payloadJson = JSON.stringify(job.payload || {});
+
+    const resolvedOrderNumber = resolveOrderNumber({
+      orderNumber: job.orderNumber,
+      orderId: job.orderId,
+      payload: job.payload,
+    });
+
+    const updatedPayload = {
+      ...(job.payload || {}),
+      orderNumber: resolvedOrderNumber,
+    };
+    const payloadJson = JSON.stringify(updatedPayload);
 
     this.db
       .prepare(
@@ -342,9 +396,11 @@ export class SqlitePrintQueue {
           ?, ?, ?, ?
         )
         ON CONFLICT(id) DO UPDATE SET
+          order_number = COALESCE(excluded.order_number, print_jobs.order_number),
           status = excluded.status,
           retry_count = excluded.retry_count,
           error_message = excluded.error_message,
+          payload_json = excluded.payload_json,
           updated_at = excluded.updated_at`
       )
       .run(
@@ -352,7 +408,7 @@ export class SqlitePrintQueue {
         job.restaurantId,
         job.branchId,
         job.orderId,
-        job.orderNumber || null,
+        resolvedOrderNumber,
         job.jobType,
         job.station,
         job.idempotencyKey || job.id || `idemp_${Date.now()}`,
@@ -434,20 +490,96 @@ export class SqlitePrintQueue {
     return result.changes;
   }
 
+  /**
+   * Delete a single job and its associated attempt logs and completed deduplication record from local SQLite.
+   * This is strictly local to the Mozz Print Agent and NEVER touches the remote Starters4U server/orders.
+   */
+  public deleteJob(jobId: string): boolean {
+    if (!this.db) return false;
+    const job = this.getJob(jobId);
+    const idempotencyKey = job?.idempotencyKey;
+
+    const tx = this.db.transaction(() => {
+      this.db!.prepare(`DELETE FROM print_attempts WHERE job_id = ?`).run(jobId);
+      if (idempotencyKey) {
+        this.db!.prepare(`DELETE FROM completed_job_ids WHERE job_id = ? OR idempotency_key = ?`).run(jobId, idempotencyKey);
+      } else {
+        this.db!.prepare(`DELETE FROM completed_job_ids WHERE job_id = ?`).run(jobId);
+      }
+      const res = this.db!.prepare(`DELETE FROM print_jobs WHERE id = ?`).run(jobId);
+      return res.changes > 0;
+    });
+
+    return tx();
+  }
+
+  /**
+   * Delete multiple jobs by IDs from local SQLite.
+   */
+  public deleteJobs(jobIds: string[]): number {
+    if (!this.db || jobIds.length === 0) return 0;
+
+    const tx = this.db.transaction(() => {
+      let count = 0;
+      const deleteAttemptsStmt = this.db!.prepare(`DELETE FROM print_attempts WHERE job_id = ?`);
+      const deleteCompletedStmt = this.db!.prepare(`DELETE FROM completed_job_ids WHERE job_id = ? OR idempotency_key = ?`);
+      const deleteJobStmt = this.db!.prepare(`DELETE FROM print_jobs WHERE id = ?`);
+
+      for (const id of jobIds) {
+        const job = this.getJob(id);
+        deleteAttemptsStmt.run(id);
+        if (job?.idempotencyKey) {
+          deleteCompletedStmt.run(id, job.idempotencyKey);
+        } else {
+          this.db!.prepare(`DELETE FROM completed_job_ids WHERE job_id = ?`).run(id);
+        }
+        const res = deleteJobStmt.run(id);
+        count += res.changes;
+      }
+      return count;
+    });
+
+    return tx();
+  }
+
+  /**
+   * Cancel an active or pending print job locally.
+   */
+  public cancelJob(jobId: string, reason = 'Cancelled by operator'): boolean {
+    if (!this.db) return false;
+    const now = new Date().toISOString();
+    const res = this.db
+      .prepare(
+        `UPDATE print_jobs 
+         SET status = 'CANCELLED',
+             error_message = ?,
+             updated_at = ?
+         WHERE id = ?`
+      )
+      .run(reason, now, jobId);
+    return res.changes > 0;
+  }
+
   private mapRowToJob(row: any): PrintJob {
-    let payload = {};
+    let payload: any = {};
     try {
       payload = JSON.parse(row.payload_json || '{}');
     } catch {
       payload = {};
     }
 
+    const resolvedOrderNumber = resolveOrderNumber({
+      orderNumber: row.order_number,
+      orderId: row.order_id,
+      payload,
+    });
+
     return {
       id: row.id,
       restaurantId: row.restaurant_id,
       branchId: row.branch_id,
       orderId: row.order_id,
-      orderNumber: row.order_number || '',
+      orderNumber: resolvedOrderNumber || 'Unknown Order',
       jobType: row.job_type,
       station: row.station,
       idempotencyKey: row.idempotency_key,

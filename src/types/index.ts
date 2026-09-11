@@ -7,6 +7,7 @@ export type PrintJobStatus =
   | 'PRINTED'
   | 'FAILED'
   | 'UNCERTAIN_RECOVERY'
+  | 'CANCELLED'
   | 'SKIPPED';
 
 export type PrinterStation =
@@ -207,6 +208,9 @@ export interface MozzPrinterAPI {
   retryJob: (jobId: string) => Promise<{ success: boolean; error?: string }>;
   reprintJob: (jobId: string, station?: string) => Promise<{ success: boolean; error?: string }>;
   clearCompletedJobs: () => Promise<{ count: number }>;
+  deleteJob: (jobId: string) => Promise<{ success: boolean; error?: string }>;
+  deleteJobs: (jobIds: string[]) => Promise<{ count: number; success: boolean; error?: string }>;
+  cancelJob: (jobId: string, reason?: string) => Promise<{ success: boolean; error?: string }>;
 
   // App & Window Control
   openExternal: (url: string) => Promise<void>;

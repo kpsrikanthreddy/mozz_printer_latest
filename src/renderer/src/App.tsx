@@ -18,6 +18,8 @@ import { PrintersTab } from './components/PrintersTab.js';
 import { SettingsTab } from './components/SettingsTab.js';
 import { DeviceAuthModal } from './components/DeviceAuthModal.js';
 import { TestPrintModal } from './components/TestPrintModal.js';
+import { ConfirmationModal } from './components/ConfirmationModal.js';
+import { formatDisplayOrderNumber } from '@/utils/orderUtils.js';
 import type {
   AppSettings,
   AgentConnectionStatus,
@@ -65,6 +67,12 @@ export default function App() {
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
+    type: 'single' | 'bulk';
+    job?: PrintJob;
+    jobIds?: string[];
+  } | null>(null);
+  const [cancelConfirmTarget, setCancelConfirmTarget] = useState<PrintJob | null>(null);
 
   // Global Notification state
   const [notification, setNotification] = useState<{
@@ -200,6 +208,120 @@ export default function App() {
     if (!window.mozzPrinterAPI) return;
     await window.mozzPrinterAPI.clearCompletedJobs();
     await refreshQueues();
+  };
+
+  const promptDeleteJob = (job: PrintJob) => {
+    if (job.status === 'PENDING' || job.status === 'PRINTING') {
+      setNotification({
+        type: 'error',
+        title: 'Cannot Delete Active Job',
+        message: 'This job is currently pending delivery or spooling. Please cancel the print job first before deleting the record.',
+      });
+      return;
+    }
+    setDeleteConfirmTarget({
+      type: 'single',
+      job,
+    });
+  };
+
+  const promptDeleteJobs = (jobIds: string[]) => {
+    if (!jobIds.length) return;
+    setDeleteConfirmTarget({
+      type: 'bulk',
+      jobIds,
+    });
+  };
+
+  const promptCancelJob = (job: PrintJob) => {
+    setCancelConfirmTarget(job);
+  };
+
+  const executeDeleteJob = async (job: PrintJob) => {
+    if (!window.mozzPrinterAPI) return;
+    try {
+      const res = await window.mozzPrinterAPI.deleteJob(job.id);
+      if (res.success) {
+        setNotification({
+          type: 'success',
+          title: 'Local Record Deleted',
+          message: `Local print record for ${formatDisplayOrderNumber(job.orderNumber)} was removed from Mozz Print Agent. Website order was not modified.`,
+        });
+        await refreshQueues();
+      } else {
+        setNotification({
+          type: 'error',
+          title: 'Deletion Failed',
+          message: res.error || 'Failed to delete record from local database.',
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        title: 'Deletion Error',
+        message: err?.message || 'Error deleting job.',
+      });
+    } finally {
+      setDeleteConfirmTarget(null);
+    }
+  };
+
+  const executeDeleteJobs = async (jobIds: string[]) => {
+    if (!window.mozzPrinterAPI) return;
+    try {
+      const res = await window.mozzPrinterAPI.deleteJobs(jobIds);
+      if (res.success) {
+        setNotification({
+          type: 'success',
+          title: 'Local Records Deleted',
+          message: `Successfully deleted ${res.count ?? jobIds.length} local records from Mozz Print Agent history. Website orders remain intact.`,
+        });
+        await refreshQueues();
+      } else {
+        setNotification({
+          type: 'error',
+          title: 'Bulk Deletion Failed',
+          message: res.error || 'Failed to delete records from local database.',
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        title: 'Deletion Error',
+        message: err?.message || 'Error deleting jobs.',
+      });
+    } finally {
+      setDeleteConfirmTarget(null);
+    }
+  };
+
+  const executeCancelJob = async (job: PrintJob) => {
+    if (!window.mozzPrinterAPI) return;
+    try {
+      const res = await window.mozzPrinterAPI.cancelJob(job.id, 'Cancelled by operator via Mozz Print Agent');
+      if (res.success) {
+        setNotification({
+          type: 'success',
+          title: 'Job Cancelled',
+          message: `Print job for order ${formatDisplayOrderNumber(job.orderNumber)} was cancelled locally.`,
+        });
+        await refreshQueues();
+      } else {
+        setNotification({
+          type: 'error',
+          title: 'Cancellation Failed',
+          message: res.error || 'Failed to cancel job in local queue.',
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        title: 'Cancellation Error',
+        message: err?.message || 'Error cancelling job.',
+      });
+    } finally {
+      setCancelConfirmTarget(null);
+    }
   };
 
   const handleSavePrinterConfig = async (config: PrinterConfig) => {
@@ -428,6 +550,8 @@ export default function App() {
               onNavigateTab={(tab) => setActiveTab(tab as any)}
               onOpenTestPrint={() => setIsTestModalOpen(true)}
               onRetryJob={handleRetryJob}
+              onDeleteJob={promptDeleteJob}
+              onCancelJob={promptCancelJob}
             />
           )}
 
@@ -437,6 +561,8 @@ export default function App() {
               failedJobs={failedJobs}
               onRetryJob={handleRetryJob}
               onReprintJob={handleReprintJob}
+              onDeleteJob={promptDeleteJob}
+              onCancelJob={promptCancelJob}
             />
           )}
 
@@ -445,6 +571,8 @@ export default function App() {
               historyJobs={historyJobs}
               onReprintJob={handleReprintJob}
               onClearCompleted={handleClearCompleted}
+              onDeleteJob={promptDeleteJob}
+              onDeleteJobs={promptDeleteJobs}
             />
           )}
 
@@ -497,6 +625,60 @@ export default function App() {
         printerConfigs={printerConfigs}
         discoveredPrinters={discoveredPrinters}
         onTriggerTestPrint={handleTriggerTestPrint}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!deleteConfirmTarget}
+        title={
+          deleteConfirmTarget?.type === 'bulk'
+            ? `Delete ${deleteConfirmTarget.jobIds?.length ?? 0} Local Records?`
+            : `Delete Local Print Record?`
+        }
+        message={
+          deleteConfirmTarget?.type === 'bulk'
+            ? `Are you sure you want to permanently delete these ${deleteConfirmTarget.jobIds?.length ?? 0} records from the local Mozz Print Agent history?`
+            : `Are you sure you want to delete the local print record for ${
+                deleteConfirmTarget?.job
+                  ? formatDisplayOrderNumber(deleteConfirmTarget.job.orderNumber)
+                  : 'this job'
+              } (${deleteConfirmTarget?.job?.jobType ?? 'JOB'})?`
+        }
+        warningNotice="Deleting local print records only removes them from the local Mozz Print Agent SQLite database (history/attempts). It NEVER deletes or modifies the customer's order, payment, or kitchen tickets on the Starters4U website/backend."
+        confirmLabel={
+          deleteConfirmTarget?.type === 'bulk'
+            ? `Delete ${deleteConfirmTarget.jobIds?.length ?? 0} Records`
+            : 'Delete Local Record'
+        }
+        cancelLabel="Keep Record"
+        isDestructive={true}
+        onConfirm={() => {
+          if (deleteConfirmTarget?.type === 'bulk' && deleteConfirmTarget.jobIds) {
+            executeDeleteJobs(deleteConfirmTarget.jobIds);
+          } else if (deleteConfirmTarget?.job) {
+            executeDeleteJob(deleteConfirmTarget.job);
+          }
+        }}
+        onCancel={() => setDeleteConfirmTarget(null)}
+      />
+
+      {/* Cancel Active Print Job Modal */}
+      <ConfirmationModal
+        isOpen={!!cancelConfirmTarget}
+        title={`Cancel Print Job ${
+          cancelConfirmTarget ? formatDisplayOrderNumber(cancelConfirmTarget.orderNumber) : ''
+        }?`}
+        message={`Are you sure you want to stop this print job from printing? The job will be removed from the active printing spool.`}
+        warningNotice="The job status will be marked CANCELLED in your local queue and Starters4U backend will be updated. The customer's order on the website remains intact."
+        confirmLabel="Cancel Print Job"
+        cancelLabel="Keep in Queue"
+        isDestructive={false}
+        onConfirm={() => {
+          if (cancelConfirmTarget) {
+            executeCancelJob(cancelConfirmTarget);
+          }
+        }}
+        onCancel={() => setCancelConfirmTarget(null)}
       />
 
       {/* Visible Success / Error Notification Toast */}

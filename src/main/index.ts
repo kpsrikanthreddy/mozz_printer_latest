@@ -506,6 +506,39 @@ function setupIpcHandlers() {
     return { count };
   });
 
+  ipcMain.handle('delete-job', (_event: any, jobId: string) => {
+    const ok = localStore.deleteJob(jobId);
+    return { success: ok };
+  });
+
+  ipcMain.handle('delete-jobs', (_event: any, jobIds: string[]) => {
+    const count = localStore.deleteJobs(jobIds);
+    return { count, success: true };
+  });
+
+  ipcMain.handle('cancel-job', async (_event: any, jobId: string, reason?: string) => {
+    const ok = localStore.cancelJob(jobId, reason || 'Cancelled by operator');
+    // Report cancellation to the backend only if the backend supports this operation
+    const settings = localStore.getSettings();
+    const token = localStore.getDeviceToken();
+    if (token && settings.apiUrl) {
+      try {
+        const cleanUrl = settings.apiUrl.replace(/\/$/, '');
+        await fetch(`${cleanUrl}/api/print-agent/jobs/${jobId}/cancel`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ reason: reason || 'Cancelled by operator on POS print agent' }),
+        }).catch(() => {});
+      } catch {
+        // Silently catch - backend might not implement this endpoint
+      }
+    }
+    return { success: ok };
+  });
+
   // 5. App Window Control
   ipcMain.handle('open-external', (_event: any, url: string) => {
     shell.openExternal(url);
