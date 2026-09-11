@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const testFiles = [
+  'dist/test/productionSafety.test.js',
   'dist/test/stage3Requirements.test.js',
   'dist/test/agentPrint.test.js',
   'dist/test/diagnostics.test.js',

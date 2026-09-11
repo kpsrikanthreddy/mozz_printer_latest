@@ -476,6 +476,14 @@ function setupIpcHandlers() {
   ipcMain.handle('retry-job', async (_event: any, jobId: string) => {
     const job = localStore.getJob(jobId);
     if (!job) return { success: false, error: 'Job not found in local store' };
+    if (job.isTest || job.id.startsWith('TEST-')) {
+      const config = localStore.getStationPrinter(job.station);
+      const res = await silentPrintService.executeJob(job, config?.printerName, config?.paperWidthMm);
+      if (res.success) {
+        localStore.markJobCompleted(job.id);
+      }
+      return { success: res.success, error: res.error };
+    }
     const ok = await agentClient.processIncomingJob(job, true);
     return { success: ok, error: ok ? undefined : 'Retry failed' };
   });
@@ -484,18 +492,31 @@ function setupIpcHandlers() {
     const originalJob = localStore.getJob(jobId);
     if (!originalJob) return { success: false, error: 'Original job not found' };
 
+    const isTestJob = Boolean(originalJob.isTest || originalJob.id.startsWith('TEST-'));
     const reprintJob = {
       ...originalJob,
-      id: `${originalJob.id}_reprint_${Date.now()}`,
+      id: isTestJob ? `TEST-${Date.now()}` : `${originalJob.id}_reprint_${Date.now()}`,
+      isTest: isTestJob ? true : originalJob.isTest,
       station: station || originalJob.station,
       isReprint: true,
       payload: {
         ...originalJob.payload,
+        isTest: isTestJob ? true : (originalJob.payload as any)?.isTest,
         isReprint: true,
       },
       status: 'PENDING' as const,
       createdAt: new Date().toISOString(),
     };
+
+    if (isTestJob) {
+      localStore.saveJob(reprintJob);
+      const config = localStore.getStationPrinter(reprintJob.station);
+      const res = await silentPrintService.executeJob(reprintJob, config?.printerName, config?.paperWidthMm);
+      if (res.success) {
+        localStore.markJobCompleted(reprintJob.id);
+      }
+      return { success: res.success, error: res.error };
+    }
 
     const ok = await agentClient.processIncomingJob(reprintJob, true);
     return { success: ok, error: ok ? undefined : 'Reprint failed' };

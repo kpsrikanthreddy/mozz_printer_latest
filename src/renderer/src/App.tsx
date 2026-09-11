@@ -92,6 +92,8 @@ export default function App() {
   const isBrowserPreview =
     typeof window !== 'undefined' &&
     (!window.mozzPrinterAPI?.isElectron || !!window.mozzPrinterAPI?.isBrowserPreview);
+  const isElectron = Boolean(window.mozzPrinterAPI?.isElectron);
+  const [showDevPreview, setShowDevPreview] = useState(false);
 
   // Initial Load & IPC setup
   useEffect(() => {
@@ -403,7 +405,7 @@ export default function App() {
       setNotification({
         type: 'success',
         title: 'Test Print Succeeded',
-        message: `Print job spooled to "${payload.customPrinterName || payload.station}". Spool verified.`,
+        message: `Successfully printed test page to "${payload.customPrinterName || payload.station}". Diagnostic spool verified!`,
       });
     } else {
       setNotification({
@@ -416,6 +418,58 @@ export default function App() {
     return res;
   };
 
+  if (!isElectron && !showDevPreview) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-slate-100 p-6 font-sans">
+        <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-8 text-center space-y-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
+            <Printer className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Production Safety Notice</span>
+            </div>
+            <h1 className="text-xl font-bold text-white tracking-tight leading-snug">
+              Mozz Print Agent must be opened from the installed Windows application.
+            </h1>
+            <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
+              Hardware printer drivers, ESC/POS thermal spools, local SQLite queues, and secure device authentication can only operate within the packaged Windows Electron runtime.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-left space-y-2 text-xs text-slate-400 font-mono">
+            <div className="flex justify-between">
+              <span>Environment:</span>
+              <span className="text-amber-400 font-semibold">Web Browser Detected</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Demo / Fake Orders:</span>
+              <span className="text-emerald-400 font-semibold">Permanently Removed</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Mock Queue Data:</span>
+              <span className="text-slate-300">0 records loaded</span>
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-col items-center space-y-3">
+            <p className="text-[11px] text-slate-500">
+              Please launch the desktop client from your Windows POS terminal to manage physical printers and station routing.
+            </p>
+            <button
+              onClick={() => setShowDevPreview(true)}
+              className="text-xs text-slate-500 hover:text-slate-300 underline transition-colors cursor-pointer"
+            >
+              Inspect UI Layout (Zero Mock Data)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Header */}
@@ -424,9 +478,6 @@ export default function App() {
         settings={settings}
         onOpenRegister={() => setIsAuthModalOpen(true)}
         onOpenTestPrint={() => setIsTestModalOpen(true)}
-        onSimulateOrder={() => {
-          (window as any).mozzPrinterSimulateOrder?.();
-        }}
       />
 
       {/* Main Content Layout (Sidebar + Stage) */}

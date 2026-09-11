@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Printer, FileText, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
+import { ConfirmationModal } from './ConfirmationModal.js';
 import type {
   PrinterConfig,
   PrintJobType,
@@ -34,6 +35,7 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
   const [targetPrinter, setTargetPrinter] = useState<string>('MOCK_PRINTER');
   const [isPrinting, setIsPrinting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   if (!isOpen) return null;
 
@@ -41,8 +43,7 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
     typeof window !== 'undefined' &&
     (!window.mozzPrinterAPI?.isElectron || !!window.mozzPrinterAPI?.isBrowserPreview);
 
-  const isPhysicalPrinter = targetPrinter !== 'MOCK_PRINTER';
-  const isPhysicalPrintDisabled = isBrowserPreview && isPhysicalPrinter;
+  const isPrintDisabled = isBrowserPreview;
 
   const handleStationChange = (st: PrinterStation) => {
     setSelectedStation(st);
@@ -53,11 +54,11 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
     }
   };
 
-  const handlePrint = async () => {
-    if (isPhysicalPrintDisabled) {
+  const executePrint = async () => {
+    if (isPrintDisabled) {
       setResult({
         success: false,
-        message: 'Browser preview—physical printing unavailable. Physical printing must work only inside the packaged Electron desktop application.',
+        message: 'Preview mode — test actions are disabled. Available only in the installed Windows Print Agent.',
       });
       return;
     }
@@ -89,6 +90,14 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
     } finally {
       setIsPrinting(false);
     }
+  };
+
+  const handlePrintRequest = () => {
+    if (isPrintDisabled) {
+      executePrint();
+      return;
+    }
+    setShowConfirmDialog(true);
   };
 
   // Build printer list ensuring Canon G3010 series is included
@@ -369,6 +378,9 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
                   style={{ width: paperWidth === 58 ? '190px' : '270px' }}
                   className="bg-white text-black p-3.5 shadow-lg rounded font-mono text-[11px] leading-tight border border-slate-300"
                 >
+                  <div className="text-center font-bold text-xs bg-black text-white py-1 px-2 mb-2 rounded-xs">
+                    *** TEST PRINT — NOT A CUSTOMER ORDER ***
+                  </div>
                   <div className="text-center font-bold text-sm tracking-wider">STARTERS4U</div>
                   <div className="text-center text-[10px]">Madhapur, Hyderabad</div>
                   <div className="border-b border-dashed border-black my-1.5"></div>
@@ -470,31 +482,45 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
             <button
               id="modal-btn-send-test"
               type="button"
-              onClick={handlePrint}
-              disabled={isPrinting || isPhysicalPrintDisabled}
+              onClick={handlePrintRequest}
+              disabled={isPrinting || isPrintDisabled}
               title={
-                isPhysicalPrintDisabled
-                  ? 'Browser preview—physical printing unavailable'
+                isPrintDisabled
+                  ? 'Available only in the installed Windows Print Agent.'
                   : 'Send test ticket to selected printer'
               }
               className={`flex items-center space-x-1.5 px-5 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                isPhysicalPrintDisabled
+                isPrintDisabled
                   ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                   : 'bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-600/20 disabled:opacity-50'
               }`}
             >
               <Send className="w-3.5 h-3.5" />
               <span>
-                {isPhysicalPrintDisabled
-                  ? 'Browser Preview (Physical Disabled)'
-                  : isPrinting
-                  ? 'Sending to Spooler...'
-                  : 'Send Test Print'}
+                {isPrinting ? 'Sending to Spooler...' : 'Send Test Print'}
               </span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* Confirmation Dialog before printing test ticket */}
+      <ConfirmationModal
+        isOpen={showConfirmDialog}
+        title="Confirm Test Print"
+        message={`This will print a test page to ${targetPrinter}. Continue?`}
+        subtitle="Manual Production Diagnostic"
+        warningNotice="Test jobs remain strictly local to this Windows workstation and will never be transmitted to the backend API or customer order history."
+        confirmLabel="Continue"
+        cancelLabel="Cancel"
+        isDestructive={false}
+        iconType="printer"
+        onConfirm={async () => {
+          setShowConfirmDialog(false);
+          await executePrint();
+        }}
+        onCancel={() => setShowConfirmDialog(false)}
+      />
     </div>
   );
 };

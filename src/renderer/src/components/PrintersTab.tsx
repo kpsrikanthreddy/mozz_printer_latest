@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Info,
 } from 'lucide-react';
+import { ConfirmationModal } from './ConfirmationModal.js';
 import type {
   PrinterConfig,
   DiscoveredPrinter,
@@ -36,6 +37,11 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [savedStation, setSavedStation] = useState<string | null>(null);
   const [testingStation, setTestingStation] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<{
+    station: PrinterStation;
+    paperWidth: PaperWidthMm;
+    printerName: string;
+  } | null>(null);
 
   const [localConfigs, setLocalConfigs] = useState<Record<string, PrinterConfig>>(() => {
     const map: Record<string, PrinterConfig> = {};
@@ -351,15 +357,15 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({
               </div>
 
               {/* Status Hint */}
-              {hasUnsavedChanges ? (
+              {isBrowserPreview ? (
+                <div className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-400 flex items-center space-x-1.5">
+                  <Info className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                  <span>Available only in the installed Windows Print Agent.</span>
+                </div>
+              ) : hasUnsavedChanges ? (
                 <div className="p-2 rounded bg-amber-950/30 border border-amber-800/40 text-[11px] text-amber-300 flex items-center space-x-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                   <span>Click <strong>Save Config</strong> below before testing this printer.</span>
-                </div>
-              ) : isPhysicalDisabled ? (
-                <div className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-400 flex items-center space-x-1.5">
-                  <Info className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                  <span>Physical printing disabled in browser preview.</span>
                 </div>
               ) : null}
 
@@ -368,28 +374,29 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({
                 <button
                   id={`btn-test-print-${meta.station}`}
                   type="button"
-                  onClick={() => handleTestPrintClick(meta.station, config.paperWidthMm, config.printerName)}
-                  disabled={hasUnsavedChanges || isPhysicalDisabled || isTesting}
+                  onClick={() => {
+                    if (isBrowserPreview) return;
+                    setConfirmTarget({
+                      station: meta.station,
+                      paperWidth: config.paperWidthMm,
+                      printerName: config.printerName,
+                    });
+                  }}
+                  disabled={isBrowserPreview || hasUnsavedChanges || isTesting}
                   title={
-                    hasUnsavedChanges
+                    isBrowserPreview
+                      ? 'Available only in the installed Windows Print Agent.'
+                      : hasUnsavedChanges
                       ? 'Please save configuration before testing'
-                      : isPhysicalDisabled
-                      ? 'Browser preview—physical printing unavailable'
                       : 'Trigger a test ticket to verify driver spool'
                   }
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    hasUnsavedChanges || isPhysicalDisabled
+                    isBrowserPreview || hasUnsavedChanges
                       ? 'bg-slate-800/50 text-slate-500 border border-slate-800 cursor-not-allowed'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-sm'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-sm cursor-pointer'
                   }`}
                 >
-                  {isTesting
-                    ? 'Testing...'
-                    : hasUnsavedChanges
-                    ? 'Save Config to Test'
-                    : isPhysicalDisabled
-                    ? 'Browser Preview (Physical Disabled)'
-                    : 'Test Print'}
+                  {isTesting ? 'Testing...' : 'Test Print'}
                 </button>
 
                 <button
@@ -410,6 +417,27 @@ export const PrintersTab: React.FC<PrintersTabProps> = ({
           );
         })}
       </div>
+
+      {/* Confirmation Dialog before station test print */}
+      <ConfirmationModal
+        isOpen={Boolean(confirmTarget)}
+        title="Confirm Test Print"
+        message={`This will print a test page to ${confirmTarget?.printerName}. Continue?`}
+        subtitle="Manual Production Diagnostic"
+        warningNotice="Test prints remain local to the Windows agent queue. They are never sent to the backend API, SSE stream, or customer order history."
+        confirmLabel="Continue"
+        cancelLabel="Cancel"
+        isDestructive={false}
+        iconType="printer"
+        onConfirm={async () => {
+          if (confirmTarget) {
+            const target = confirmTarget;
+            setConfirmTarget(null);
+            await handleTestPrintClick(target.station, target.paperWidth, target.printerName);
+          }
+        }}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 };

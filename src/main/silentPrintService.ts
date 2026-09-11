@@ -333,13 +333,16 @@ export class SilentPrintService {
     customPrinterName?: string
   ): Promise<PrintResult> {
     const testTimestamp = Date.now();
+    const testId = `TEST-${testTimestamp}`;
+    const testOrderNum = `TEST-${testTimestamp}`;
     const mockJob: PrintJob = {
-      id: `test_${testTimestamp}`,
+      id: testId,
+      isTest: true,
       idempotencyKey: `test_idemp_${testTimestamp}`,
       restaurantId: 'test_rest',
       branchId: 'test_branch',
-      orderId: 'test_order',
-      orderNumber: 'TEST-101',
+      orderId: `test_order_${testTimestamp}`,
+      orderNumber: testOrderNum,
       jobType: type,
       station: config.station,
       status: 'PENDING',
@@ -348,10 +351,11 @@ export class SilentPrintService {
       payload:
         type === 'KOT'
           ? {
+              isTest: true,
               restaurantName: 'Starters4U Test Kitchen',
               branchName: 'Main Store',
-              kotNumber: 'KOT-TEST-01',
-              orderNumber: 'TEST-101',
+              kotNumber: `KOT-${testId}`,
+              orderNumber: testOrderNum,
               orderType: 'dine_in',
               tableNumber: 'T-07',
               orderTime: new Date().toISOString(),
@@ -374,13 +378,14 @@ export class SilentPrintService {
               ],
             }
           : {
+              isTest: true,
               restaurantName: 'Starters4U',
               branchName: 'Madhapur Branch, Hyderabad',
               branchAddress: 'Plot 42, Hitec City Main Rd',
               branchPhone: '+91 98765 43210',
               gstin: '36AAAAA0000A1Z5',
-              billNumber: 'INV-TEST-2026-001',
-              orderNumber: 'TEST-101',
+              billNumber: `INV-${testId}`,
+              orderNumber: testOrderNum,
               orderTime: new Date().toISOString(),
               orderType: 'dine_in',
               tableNumber: 'T-07',

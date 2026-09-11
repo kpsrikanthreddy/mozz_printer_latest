@@ -133,193 +133,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   lastHeartbeatAt: new Date().toISOString(),
 };
 
-const INITIAL_JOBS: PrintJob[] = [
-  {
-    id: 'job_kot_101',
-    restaurantId: 'rest_starters4u_01',
-    branchId: 'branch_madhapur_01',
-    orderId: 'ord_9821',
-    orderNumber: 'S4U-9821',
-    jobType: 'KOT',
-    station: 'kitchen_master',
-    status: 'PRINTED',
-    retryCount: 0,
-    createdAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    printedAt: new Date(Date.now() - 1000 * 60 * 17).toISOString(),
-    payload: {
-      restaurantName: 'Starters4U',
-      branchName: 'Madhapur Outlet',
-      kotNumber: 'KOT-101',
-      orderNumber: 'S4U-9821',
-      orderType: 'Dine-In',
-      tableNumber: 'T-04',
-      station: 'kitchen_master',
-      orderTime: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-      items: [
-        {
-          name: 'Paneer Butter Masala',
-          quantity: 1,
-          spiceLevel: 'Medium Spicy',
-          specialInstructions: 'Less butter, extra coriander',
-        },
-        {
-          name: 'Butter Garlic Naan',
-          quantity: 4,
-          addons: ['Crispy Garlic'],
-        },
-        {
-          name: 'Crispy Corn Salt & Pepper',
-          quantity: 1,
-          spiceLevel: 'Spicy',
-        },
-      ],
-    } as KotTicketPayload,
-  },
-  {
-    id: 'job_bill_101',
-    restaurantId: 'rest_starters4u_01',
-    branchId: 'branch_madhapur_01',
-    orderId: 'ord_9821',
-    orderNumber: 'S4U-9821',
-    jobType: 'BILL',
-    station: 'billing',
-    status: 'PRINTED',
-    retryCount: 0,
-    createdAt: new Date(Date.now() - 1000 * 60 * 14).toISOString(),
-    printedAt: new Date(Date.now() - 1000 * 60 * 13).toISOString(),
-    payload: {
-      restaurantName: 'Starters4U',
-      branchName: 'Madhapur Outlet',
-      branchAddress: 'Plot 42, Hitech City Main Rd, Madhapur, Hyderabad, TS 500081',
-      branchPhone: '+91 98765 43210',
-      gstin: '36AAAAA0000A1Z5',
-      billNumber: 'BILL-4089',
-      orderNumber: 'S4U-9821',
-      orderTime: new Date(Date.now() - 1000 * 60 * 14).toISOString(),
-      orderType: 'Dine-In',
-      tableNumber: 'T-04',
-      customerName: 'Rohit Sharma',
-      customerPhone: '+91 99887 76655',
-      items: [
-        { name: 'Paneer Butter Masala', quantity: 1, unitPrice: 320, itemTotal: 320 },
-        { name: 'Butter Garlic Naan', quantity: 4, unitPrice: 65, itemTotal: 260 },
-        { name: 'Crispy Corn Salt & Pepper', quantity: 1, unitPrice: 220, itemTotal: 220 },
-      ],
-      itemTotal: 800,
-      discount: 0,
-      tax: 40,
-      taxRate: 5,
-      deliveryFee: 0,
-      grandTotal: 840,
-      paymentMethod: 'UPI (PhonePe)',
-      paymentStatus: 'PAID',
-    } as BillTicketPayload,
-  },
-  {
-    id: 'job_kot_102',
-    restaurantId: 'rest_starters4u_01',
-    branchId: 'branch_madhapur_01',
-    orderId: 'ord_9825',
-    orderNumber: 'S4U-9825',
-    jobType: 'KOT',
-    station: 'kitchen_pizza',
-    status: 'PRINTED',
-    retryCount: 0,
-    createdAt: new Date(Date.now() - 1000 * 60 * 9).toISOString(),
-    printedAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-    payload: {
-      restaurantName: 'Starters4U',
-      branchName: 'Madhapur Outlet',
-      kotNumber: 'KOT-102',
-      orderNumber: 'S4U-9825',
-      orderType: 'Zomato Delivery',
-      station: 'kitchen_pizza',
-      orderTime: new Date(Date.now() - 1000 * 60 * 9).toISOString(),
-      items: [
-        {
-          name: 'Farmhouse Supreme Pizza 10"',
-          quantity: 2,
-          selectedCrust: 'Cheese Burst',
-          selectedShape: 'Round',
-          addons: ['Extra Jalapenos', 'Black Olives'],
-        },
-        {
-          name: 'Stuffed Garlic Breadsticks',
-          quantity: 1,
-          specialInstructions: 'Include cheesy dip',
-        },
-      ],
-    } as KotTicketPayload,
-  },
-  {
-    id: 'job_kot_103',
-    restaurantId: 'rest_starters4u_01',
-    branchId: 'branch_madhapur_01',
-    orderId: 'ord_9828',
-    orderNumber: 'S4U-9828',
-    jobType: 'KOT',
-    station: 'bar_beverage',
-    status: 'FAILED',
-    errorMessage: 'Thermal printer buffer timeout: Xprinter XP-58 out of paper roll',
-    retryCount: 2,
-    createdAt: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
-    failedAt: new Date(Date.now() - 1000 * 60 * 3).toISOString(),
-    payload: {
-      restaurantName: 'Starters4U',
-      branchName: 'Madhapur Outlet',
-      kotNumber: 'KOT-103',
-      orderNumber: 'S4U-9828',
-      orderType: 'Dine-In',
-      tableNumber: 'T-11',
-      station: 'bar_beverage',
-      orderTime: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
-      items: [
-        {
-          name: 'Virgin Mint Mojito',
-          quantity: 2,
-          specialInstructions: 'Extra mint, crushed ice, less sugar syrup',
-        },
-        {
-          name: 'Thick Cold Coffee with Brownie',
-          quantity: 1,
-        },
-      ],
-    } as KotTicketPayload,
-  },
-  {
-    id: 'job_kot_104',
-    restaurantId: 'rest_starters4u_01',
-    branchId: 'branch_madhapur_01',
-    orderId: 'ord_9831',
-    orderNumber: 'S4U-9831',
-    jobType: 'KOT',
-    station: 'kitchen_master',
-    status: 'PENDING',
-    retryCount: 0,
-    createdAt: new Date(Date.now() - 1000 * 35).toISOString(),
-    payload: {
-      restaurantName: 'Starters4U',
-      branchName: 'Madhapur Outlet',
-      kotNumber: 'KOT-104',
-      orderNumber: 'S4U-9831',
-      orderType: 'Takeaway Counter',
-      station: 'kitchen_master',
-      orderTime: new Date(Date.now() - 1000 * 35).toISOString(),
-      items: [
-        {
-          name: 'Chicken Dum Biryani (Full)',
-          quantity: 2,
-          spiceLevel: 'Spicy',
-          specialInstructions: 'Pack double salan and onion raita',
-        },
-        {
-          name: 'Chicken 65 Hyderabadi',
-          quantity: 1,
-        },
-      ],
-    } as KotTicketPayload,
-  },
-];
+// No simulated orders or demo data in production builds
+const INITIAL_JOBS: PrintJob[] = [];
 
 class BrowserPrintAgentStore {
   private data: BrowserStoreData;
@@ -335,11 +150,12 @@ class BrowserPrintAgentStore {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.settings && Array.isArray(parsed.jobs)) {
+        if (parsed && parsed.settings) {
           return {
             ...parsed,
+            jobs: [], // Strictly empty in browser preview mode
             startedAt: parsed.startedAt || Date.now(),
-            status: parsed.settings.isRegistered ? 'connected_sse' : 'unauthorized',
+            status: 'connected_sse',
           };
         }
       }
@@ -361,7 +177,9 @@ class BrowserPrintAgentStore {
 
   private save(data: BrowserStoreData): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      // Guarantee zero stored jobs in browser preview
+      const cleanData = { ...data, jobs: [] };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanData));
     } catch {
       // ignore
     }
@@ -412,18 +230,13 @@ class BrowserPrintAgentStore {
   }
 
   getMetrics(): AgentMetrics {
-    const printed = this.data.jobs.filter((j) => j.status === 'PRINTED').length;
-    const failed = this.data.jobs.filter((j) => j.status === 'FAILED').length;
-    const pending = this.data.jobs.filter((j) => j.status === 'PENDING' || j.status === 'CLAIMED' || j.status === 'PRINTING').length;
-    const uptime = Math.floor((Date.now() - this.data.startedAt) / 1000);
-
     return {
-      totalJobsReceived: this.data.jobs.length,
-      totalJobsPrinted: printed,
-      totalJobsFailed: failed,
-      pendingQueueLength: pending,
-      connectionUptimeSeconds: uptime,
-      lastSyncTime: new Date().toISOString(),
+      totalJobsReceived: 0,
+      totalJobsPrinted: 0,
+      totalJobsFailed: 0,
+      pendingQueueLength: 0,
+      connectionUptimeSeconds: 0,
+      lastSyncTime: 'N/A (Preview Mode)',
     };
   }
 
@@ -447,19 +260,15 @@ class BrowserPrintAgentStore {
   }
 
   getPendingJobs(): PrintJob[] {
-    return this.data.jobs.filter(
-      (j) => j.status === 'PENDING' || j.status === 'CLAIMED' || j.status === 'PRINTING'
-    );
+    return [];
   }
 
   getFailedJobs(): PrintJob[] {
-    return this.data.jobs.filter((j) => j.status === 'FAILED');
+    return [];
   }
 
-  getJobHistory(limit = 100): PrintJob[] {
-    return [...this.data.jobs]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit);
+  getJobHistory(_limit = 100): PrintJob[] {
+    return [];
   }
 
   subscribeStatus(cb: (status: AgentConnectionStatus) => void): () => void {
@@ -482,351 +291,70 @@ class BrowserPrintAgentStore {
     }
   }
 
-  async pairDeviceWithCode(payload: {
+  async pairDeviceWithCode(_payload: {
     apiUrl: string;
     pairingCode: string;
     deviceId?: string;
     deviceName?: string;
   }): Promise<{ success: boolean; deviceName?: string; error?: string }> {
-    const cleanUrl = payload.apiUrl.replace(/\/$/, '');
-    const deviceName = payload.deviceName || this.data.settings.deviceName || 'Windows POS Terminal 01';
-    const deviceId = payload.deviceId || this.data.settings.deviceId || `win_pos_${Math.random().toString(36).substring(2, 8)}`;
-
-    this.saveSettings({
-      apiUrl: cleanUrl,
-      deviceId,
-      deviceName,
-      isRegistered: true,
-      hasToken: true,
-      maskedToken: `ptk_win_••••••••••••${payload.pairingCode}`,
-    });
-
-    this.setStatus('connected_sse');
-    return { success: true, deviceName };
+    return {
+      success: false,
+      error: 'Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.',
+    };
   }
 
-  async registerDevice(payload: {
+  async registerDevice(_payload: {
     apiUrl: string;
     restaurantId: string;
     branchId: string;
     deviceId: string;
     deviceName: string;
   }): Promise<{ success: boolean; deviceName: string; error?: string }> {
-    this.saveSettings({
-      apiUrl: payload.apiUrl.replace(/\/$/, ''),
-      restaurantId: payload.restaurantId,
-      branchId: payload.branchId,
-      deviceId: payload.deviceId,
-      deviceName: payload.deviceName,
-      isRegistered: true,
-      hasToken: true,
-      maskedToken: 'ptk_win_••••••••••••9482',
-    });
-    this.setStatus('connected_sse');
-    return { success: true, deviceName: payload.deviceName };
+    return {
+      success: false,
+      deviceName: '',
+      error: 'Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.',
+    };
   }
 
   async disconnectDevice(): Promise<{ success: boolean }> {
-    this.saveSettings({
-      isRegistered: false,
-      hasToken: false,
-    });
-    this.setStatus('unauthorized');
-    return { success: true };
+    return { success: false };
   }
 
-  async testPrint(payload: {
+  async testPrint(_payload: {
     type: PrintJobType;
     station: PrinterStation;
     paperWidthMm: PaperWidthMm;
     customPrinterName?: string;
   }): Promise<{ success: boolean; error?: string }> {
-    const jobNum = Math.floor(100 + Math.random() * 900);
-    const orderNum = `TEST-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    let ticketPayload: KotTicketPayload | BillTicketPayload;
-
-    if (payload.type === 'KOT') {
-      ticketPayload = {
-        restaurantName: this.data.settings.restaurantName || 'Starters4U',
-        branchName: this.data.settings.branchName || 'Madhapur Outlet',
-        kotNumber: `KOT-T${jobNum}`,
-        orderNumber: orderNum,
-        orderType: 'Test Print Drill',
-        tableNumber: 'TEST-01',
-        station: payload.station,
-        orderTime: new Date().toISOString(),
-        items: [
-          {
-            name: 'Test Pepperoni / Paneer Special',
-            quantity: 1,
-            selectedShape: 'Heart',
-            selectedCrust: 'Thin Crust',
-            spiceLevel: 'Medium',
-            addons: ['Extra Cheese Dip'],
-            specialInstructions: `Simulated 58mm/80mm thermal test print on ${payload.customPrinterName || 'Auto-spooler'}`,
-          },
-        ],
-      };
-    } else {
-      ticketPayload = {
-        restaurantName: this.data.settings.restaurantName || 'Starters4U',
-        branchName: this.data.settings.branchName || 'Madhapur Outlet',
-        branchAddress: 'Plot 42, Hitech City Main Rd, Madhapur, Hyderabad, TS',
-        branchPhone: '+91 98765 43210',
-        gstin: '36AAAAA0000A1Z5',
-        billNumber: `BILL-T${jobNum}`,
-        orderNumber: orderNum,
-        orderTime: new Date().toISOString(),
-        orderType: 'Test Bill Receipt',
-        tableNumber: 'TEST-01',
-        customerName: 'Test Customer',
-        customerPhone: '+91 98000 12345',
-        items: [
-          { name: 'Starters4U Special Platter', quantity: 1, unitPrice: 450, itemTotal: 450 },
-          { name: 'Fresh Mint Lime Soda', quantity: 2, unitPrice: 90, itemTotal: 180 },
-        ],
-        itemTotal: 630,
-        discount: 30,
-        tax: 30,
-        taxRate: 5,
-        deliveryFee: 0,
-        grandTotal: 630,
-        paymentMethod: 'Test Card Spool',
-        paymentStatus: 'PAID_TEST',
-      };
-    }
-
-    if (payload.customPrinterName && payload.customPrinterName !== 'MOCK_PRINTER') {
-      const errorMsg = 'Browser preview—physical printing unavailable. Physical printing must work only inside the packaged Electron desktop application.';
-      const failedJob: PrintJob = {
-        id: `job_test_err_${Date.now()}`,
-        restaurantId: this.data.settings.restaurantId || 'rest_starters4u_01',
-        branchId: this.data.settings.branchId || 'branch_madhapur_01',
-        orderId: `ord_${Date.now()}`,
-        orderNumber: orderNum,
-        jobType: payload.type,
-        station: payload.station,
-        status: 'FAILED',
-        errorMessage: errorMsg,
-        retryCount: 0,
-        createdAt: new Date().toISOString(),
-        failedAt: new Date().toISOString(),
-        payload: ticketPayload,
-      };
-
-      this.data.jobs.unshift(failedJob);
-      this.save(this.data);
-      this.dispatchJobEvent('NEW_JOB', failedJob);
-
-      return {
-        success: false,
-        error: errorMsg,
-      };
-    }
-
-    const testJob: PrintJob = {
-      id: `job_test_${Date.now()}`,
-      restaurantId: this.data.settings.restaurantId || 'rest_starters4u_01',
-      branchId: this.data.settings.branchId || 'branch_madhapur_01',
-      orderId: `ord_${Date.now()}`,
-      orderNumber: orderNum,
-      jobType: payload.type,
-      station: payload.station,
-      status: 'PENDING',
-      retryCount: 0,
-      createdAt: new Date().toISOString(),
-      payload: ticketPayload,
+    return {
+      success: false,
+      error: 'Preview mode — printing, pairing, backend connection, SSE, and test actions are disabled. Available only in the installed Windows Print Agent.',
     };
-
-    this.data.jobs.unshift(testJob);
-    this.save(this.data);
-    this.dispatchJobEvent('NEW_JOB', testJob);
-
-    // Transition to PRINTING then PRINTED in real time
-    setTimeout(() => {
-      testJob.status = 'PRINTING';
-      this.save(this.data);
-      this.dispatchJobEvent('JOB_UPDATED', testJob);
-
-      setTimeout(() => {
-        testJob.status = 'PRINTED';
-        testJob.printedAt = new Date().toISOString();
-        this.save(this.data);
-        this.dispatchJobEvent('JOB_COMPLETED', testJob);
-      }, 600);
-    }, 300);
-
-    return { success: true };
   }
 
-  async retryJob(jobId: string): Promise<{ success: boolean; error?: string }> {
-    const job = this.data.jobs.find((j) => j.id === jobId);
-    if (!job) return { success: false, error: 'Job not found in queue' };
-
-    job.status = 'PRINTING';
-    job.errorMessage = undefined;
-    job.retryCount += 1;
-    this.save(this.data);
-    this.dispatchJobEvent('JOB_UPDATED', job);
-
-    setTimeout(() => {
-      job.status = 'PRINTED';
-      job.printedAt = new Date().toISOString();
-      this.save(this.data);
-      this.dispatchJobEvent('JOB_COMPLETED', job);
-    }, 600);
-
-    return { success: true };
+  async retryJob(_jobId: string): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: 'Preview mode — printing is disabled' };
   }
 
-  async reprintJob(jobId: string, station?: string): Promise<{ success: boolean; error?: string }> {
-    const originalJob = this.data.jobs.find((j) => j.id === jobId);
-    if (!originalJob) return { success: false, error: 'Original job not found' };
-
-    const reprintJob: PrintJob = {
-      ...originalJob,
-      id: `${originalJob.id}_reprint_${Date.now()}`,
-      station: station || originalJob.station,
-      isReprint: true,
-      status: 'PRINTED',
-      retryCount: 0,
-      createdAt: new Date().toISOString(),
-      printedAt: new Date().toISOString(),
-      payload: {
-        ...originalJob.payload,
-        isReprint: true,
-      },
-    };
-
-    this.data.jobs.unshift(reprintJob);
-    this.save(this.data);
-    this.dispatchJobEvent('NEW_JOB', reprintJob);
-    this.dispatchJobEvent('JOB_COMPLETED', reprintJob);
-
-    return { success: true };
+  async reprintJob(_jobId: string, _station?: string): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: 'Preview mode — printing is disabled' };
   }
 
   clearCompletedJobs(): { count: number } {
-    const beforeCount = this.data.jobs.length;
-    this.data.jobs = this.data.jobs.filter((j) => j.status !== 'PRINTED');
-    const removed = beforeCount - this.data.jobs.length;
-    this.save(this.data);
-    return { count: removed };
+    return { count: 0 };
   }
 
-  deleteJob(jobId: string): { success: boolean } {
-    const beforeCount = this.data.jobs.length;
-    this.data.jobs = this.data.jobs.filter((j) => j.id !== jobId);
-    const removed = beforeCount !== this.data.jobs.length;
-    if (removed) {
-      this.save(this.data);
-    }
-    return { success: removed };
+  deleteJob(_jobId: string): { success: boolean } {
+    return { success: false };
   }
 
-  deleteJobs(jobIds: string[]): { count: number; success: boolean } {
-    const set = new Set(jobIds);
-    const beforeCount = this.data.jobs.length;
-    this.data.jobs = this.data.jobs.filter((j) => !set.has(j.id));
-    const count = beforeCount - this.data.jobs.length;
-    if (count > 0) {
-      this.save(this.data);
-    }
-    return { count, success: true };
+  deleteJobs(_jobIds: string[]): { count: number; success: boolean } {
+    return { count: 0, success: true };
   }
 
-  cancelJob(jobId: string, reason = 'Cancelled by operator'): { success: boolean } {
-    const job = this.data.jobs.find((j) => j.id === jobId);
-    if (!job) return { success: false };
-    job.status = 'CANCELLED';
-    job.errorMessage = reason;
-    this.save(this.data);
-    this.dispatchJobEvent('JOB_UPDATED', job);
-    return { success: true };
-  }
-
-  // Simulate incoming live print job from Cloud POS
-  simulateIncomingOrder(): PrintJob {
-    const orderNum = `S4U-${Math.floor(1000 + Math.random() * 9000)}`;
-    const kotNum = `KOT-${Math.floor(100 + Math.random() * 900)}`;
-    const isKot = Math.random() > 0.35;
-
-    const newJob: PrintJob = {
-      id: `job_sim_${Date.now()}`,
-      restaurantId: this.data.settings.restaurantId || 'rest_starters4u_01',
-      branchId: this.data.settings.branchId || 'branch_madhapur_01',
-      orderId: `ord_sim_${Date.now()}`,
-      orderNumber: orderNum,
-      jobType: isKot ? 'KOT' : 'BILL',
-      station: isKot ? (Math.random() > 0.5 ? 'kitchen_master' : 'kitchen_pizza') : 'billing',
-      status: 'PRINTING',
-      retryCount: 0,
-      createdAt: new Date().toISOString(),
-      payload: isKot
-        ? ({
-            restaurantName: 'Starters4U',
-            branchName: 'Madhapur Outlet',
-            kotNumber: kotNum,
-            orderNumber: orderNum,
-            orderType: 'Live Cloud POS Order',
-            tableNumber: `T-0${Math.floor(1 + Math.random() * 9)}`,
-            station: 'kitchen_master',
-            orderTime: new Date().toISOString(),
-            items: [
-              {
-                name: 'Crispy Veg Spring Rolls',
-                quantity: 2,
-                spiceLevel: 'Medium',
-                specialInstructions: 'Serve with sweet chili dip',
-              },
-              {
-                name: 'Paneer Makhani Pizza',
-                quantity: 1,
-                selectedCrust: 'Cheese Burst',
-              },
-            ],
-          } as KotTicketPayload)
-        : ({
-            restaurantName: 'Starters4U',
-            branchName: 'Madhapur Outlet',
-            branchAddress: 'Plot 42, Hitech City Main Rd, Madhapur, Hyderabad, TS',
-            branchPhone: '+91 98765 43210',
-            gstin: '36AAAAA0000A1Z5',
-            billNumber: `BILL-${Math.floor(5000 + Math.random() * 5000)}`,
-            orderNumber: orderNum,
-            orderTime: new Date().toISOString(),
-            orderType: 'Dine-In',
-            tableNumber: `T-0${Math.floor(1 + Math.random() * 9)}`,
-            customerName: 'Aarav Patel',
-            customerPhone: '+91 98765 11223',
-            items: [
-              { name: 'Crispy Veg Spring Rolls', quantity: 2, unitPrice: 210, itemTotal: 420 },
-              { name: 'Paneer Makhani Pizza', quantity: 1, unitPrice: 380, itemTotal: 380 },
-            ],
-            itemTotal: 800,
-            discount: 0,
-            tax: 40,
-            taxRate: 5,
-            deliveryFee: 0,
-            grandTotal: 840,
-            paymentMethod: 'UPI',
-            paymentStatus: 'PAID',
-          } as BillTicketPayload),
-    };
-
-    this.data.jobs.unshift(newJob);
-    this.save(this.data);
-    this.dispatchJobEvent('NEW_JOB', newJob);
-
-    setTimeout(() => {
-      newJob.status = 'PRINTED';
-      newJob.printedAt = new Date().toISOString();
-      this.save(this.data);
-      this.dispatchJobEvent('JOB_COMPLETED', newJob);
-    }, 800);
-
-    return newJob;
+  cancelJob(_jobId: string, _reason = 'Cancelled by operator'): { success: boolean } {
+    return { success: false };
   }
 }
 
@@ -894,11 +422,6 @@ export function initBrowserApi(): MozzPrinterAPI {
   };
 
   window.mozzPrinterAPI = api;
-
-  // Also expose simulateIncomingOrder for testing
-  (window as any).mozzPrinterSimulateOrder = () => {
-    return store.simulateIncomingOrder();
-  };
 
   return api;
 }

@@ -55,6 +55,7 @@ export interface KotTicketPayload {
   tableNumber?: string;
   orderTime: string;
   isReprint?: boolean;
+  isTest?: boolean;
   station: string;
   specialInstructions?: string;
   items: KotItem[];
@@ -85,6 +86,7 @@ export interface BillTicketPayload {
   customerPhone?: string;
   customerAddress?: string;
   isReprint?: boolean;
+  isTest?: boolean;
   items: BillItem[];
   itemTotal: number;
   discount: number;
@@ -112,6 +114,7 @@ export interface PrintJob {
   idempotencyKey?: string;
   claimedByDeviceId?: string;
   isReprint?: boolean;
+  isTest?: boolean;
   createdAt: string;
   updatedAt?: string;
   claimedAt?: string;

@@ -95,10 +95,25 @@ export function generateKotHtml(payload: KotTicketPayload, paperWidthMm: PaperWi
             margin-bottom: 6px;
             letter-spacing: 0.5px;
           }
+          .test-print-banner {
+            border: 2px solid #000;
+            padding: 4px;
+            text-align: center;
+            font-weight: bold;
+            font-size: ${is58 ? '10px' : '11px'};
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+            background: #fff;
+          }
         </style>
       </head>
       <body>
         ${isA4Test ? '<div class="a4-test-banner">[ A4 TEST PRINT - CANON G3010 (TOP-LEFT) ]</div>' : ''}
+        ${
+          payload.isTest || (payload.orderNumber && payload.orderNumber.startsWith('TEST-')) || (payload.kotNumber && payload.kotNumber.includes('TEST'))
+            ? '<div class="test-print-banner">*** TEST PRINT — NOT A CUSTOMER ORDER ***</div>'
+            : ''
+        }
         ${payload.isReprint ? '<div class="reprint-banner">*** DUPLICATE REPRINT ***</div>' : ''}
         
         <div class="center bold" style="font-size: ${headerFontSize}; letter-spacing: 0.5px;">
@@ -247,10 +262,25 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
             margin-bottom: 6px;
             letter-spacing: 0.5px;
           }
+          .test-print-banner {
+            border: 2px solid #000;
+            padding: 4px;
+            text-align: center;
+            font-weight: bold;
+            font-size: ${is58 ? '10px' : '11px'};
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+            background: #fff;
+          }
         </style>
       </head>
       <body>
         ${isA4Test ? '<div class="a4-test-banner">[ A4 TEST PRINT - CANON G3010 (TOP-LEFT) ]</div>' : ''}
+        ${
+          payload.isTest || (payload.orderNumber && payload.orderNumber.startsWith('TEST-')) || (payload.billNumber && payload.billNumber.includes('TEST'))
+            ? '<div class="test-print-banner">*** TEST PRINT — NOT A CUSTOMER ORDER ***</div>'
+            : ''
+        }
         ${payload.isReprint ? '<div class="reprint-banner">*** DUPLICATE BILL ***</div>' : ''}
 
         <div class="center bold" style="font-size: ${headerFontSize};">

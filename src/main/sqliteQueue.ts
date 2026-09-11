@@ -574,6 +574,12 @@ export class SqlitePrintQueue {
       payload,
     });
 
+    const isTest = Boolean(
+      payload?.isTest ||
+      row.id?.startsWith('TEST-') ||
+      row.order_number?.startsWith('TEST-')
+    );
+
     return {
       id: row.id,
       restaurantId: row.restaurant_id,
@@ -584,6 +590,7 @@ export class SqlitePrintQueue {
       station: row.station,
       idempotencyKey: row.idempotency_key,
       status: row.status as PrintJobStatus,
+      isTest: isTest || undefined,
       isReprint: Boolean(row.is_reprint),
       claimedByDeviceId: row.claimed_by_device_id,
       claimedAt: row.claimed_at,

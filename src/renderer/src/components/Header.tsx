@@ -8,7 +8,6 @@ import {
   X,
   Store,
   ShieldCheck,
-  Zap,
 } from 'lucide-react';
 import type { AgentConnectionStatus, AppSettings } from '@/types/index.js';
 
@@ -17,7 +16,7 @@ interface HeaderProps {
   settings: AppSettings;
   onOpenRegister: () => void;
   onOpenTestPrint: () => void;
-  onSimulateOrder?: () => void;
+  isBrowserPreview?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,9 +24,22 @@ export const Header: React.FC<HeaderProps> = ({
   settings,
   onOpenRegister,
   onOpenTestPrint,
-  onSimulateOrder,
+  isBrowserPreview,
 }) => {
   const getStatusBadge = () => {
+    if (isBrowserPreview) {
+      return (
+        <div
+          className="flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold"
+          title="Preview mode — printing, pairing, backend connection, SSE, and test actions are disabled."
+        >
+          <span className="h-2 w-2 rounded-full bg-amber-400"></span>
+          <WifiOff className="w-3.5 h-3.5" />
+          <span>PREVIEW MODE</span>
+        </div>
+      );
+    }
+
     switch (status) {
       case 'connected_sse':
         return (
@@ -124,22 +136,22 @@ export const Header: React.FC<HeaderProps> = ({
         {getStatusBadge()}
 
         <button
-          onClick={onOpenTestPrint}
-          className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white text-xs font-medium transition-colors shadow-sm"
+          id="btn-header-quick-test"
+          onClick={isBrowserPreview ? undefined : onOpenTestPrint}
+          disabled={isBrowserPreview}
+          title={
+            isBrowserPreview
+              ? 'Available only in the installed Windows Print Agent.'
+              : 'Trigger a quick diagnostic test print'
+          }
+          className={`px-3 py-1 rounded-lg border text-xs font-medium transition-colors shadow-sm ${
+            isBrowserPreview
+              ? 'bg-slate-800/50 border-slate-700/50 text-slate-500 cursor-not-allowed'
+              : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 hover:text-white cursor-pointer'
+          }`}
         >
           Quick Test
         </button>
-
-        {onSimulateOrder && (
-          <button
-            onClick={onSimulateOrder}
-            className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 text-orange-300 hover:text-orange-200 text-xs font-medium transition-colors shadow-sm"
-            title="Simulate incoming real-time Cloud POS Order"
-          >
-            <Zap className="w-3.5 h-3.5 text-orange-400" />
-            <span>Simulate Order</span>
-          </button>
-        )}
       </div>
 
       {/* Window Controls */}

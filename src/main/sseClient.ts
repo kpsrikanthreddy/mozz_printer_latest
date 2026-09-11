@@ -423,12 +423,21 @@ export class SsePrintAgentClient {
     const token = localStore.getDeviceToken();
 
     const resolvedOrderNumber = resolveOrderNumber(job);
+    const isTestJob = Boolean(
+      job.isTest ||
+      job.id?.startsWith('TEST-') ||
+      job.orderNumber?.startsWith('TEST-') ||
+      (job.payload as any)?.isTest
+    );
+
     const normalizedJob: PrintJob = {
       ...job,
+      isTest: isTestJob ? true : job.isTest,
       orderNumber: resolvedOrderNumber,
       payload: {
         ...(job.payload || {}),
         orderNumber: resolvedOrderNumber,
+        isTest: isTestJob ? true : (job.payload as any)?.isTest,
       } as any,
     };
 
@@ -442,8 +451,8 @@ export class SsePrintAgentClient {
     localStore.saveJob(normalizedJob);
     this.emitJobEvent('NEW_JOB', normalizedJob);
 
-    // 2. Claim job on backend (Atomic lock)
-    if (token && settings.apiUrl) {
+    // 2. Claim job on backend (Atomic lock) - TEST JOBS NEVER CLAIM OR CALL BACKEND
+    if (!isTestJob && token && settings.apiUrl) {
       try {
         const claimUrl = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/jobs/${normalizedJob.id}/claim`;
         const claimRes = await fetch(claimUrl, {
@@ -467,7 +476,7 @@ export class SsePrintAgentClient {
     localStore.updateJob(normalizedJob.id, { status: 'PRINTING' });
     this.emitJobEvent('JOB_UPDATED', { ...normalizedJob, status: 'PRINTING' });
 
-    if (token && settings.apiUrl) {
+    if (!isTestJob && token && settings.apiUrl) {
       try {
         const statusUrl = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/jobs/${job.id}/status`;
         await fetch(statusUrl, {
@@ -492,7 +501,7 @@ export class SsePrintAgentClient {
       const updatedJob = localStore.getJob(job.id) || { ...job, status: 'PRINTED' as const };
       this.emitJobEvent('JOB_COMPLETED', updatedJob);
 
-      if (token && settings.apiUrl) {
+      if (!isTestJob && token && settings.apiUrl) {
         try {
           const statusUrl = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/jobs/${job.id}/status`;
           await fetch(statusUrl, {
@@ -522,7 +531,7 @@ export class SsePrintAgentClient {
       };
       this.emitJobEvent('JOB_UPDATED', failedJob);
 
-      if (token && settings.apiUrl) {
+      if (!isTestJob && token && settings.apiUrl) {
         try {
           const statusUrl = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/jobs/${job.id}/status`;
           await fetch(statusUrl, {

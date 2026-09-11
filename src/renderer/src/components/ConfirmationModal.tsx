@@ -1,14 +1,16 @@
 import React from 'react';
-import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Trash2, Printer, X } from 'lucide-react';
 
 interface ConfirmationModalProps {
   isOpen: boolean;
   title: string;
   message: string;
+  subtitle?: string;
   warningNotice?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   isDestructive?: boolean;
+  iconType?: 'trash' | 'printer' | 'warning';
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -17,14 +19,28 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   isOpen,
   title,
   message,
+  subtitle,
   warningNotice,
   confirmLabel = 'Delete Record',
   cancelLabel = 'Cancel',
   isDestructive = true,
+  iconType = isDestructive ? 'trash' : 'warning',
   onConfirm,
   onCancel,
 }) => {
   if (!isOpen) return null;
+
+  const renderIcon = () => {
+    if (iconType === 'printer') return <Printer className="w-5 h-5" />;
+    if (iconType === 'trash' || isDestructive) return <Trash2 className="w-5 h-5" />;
+    return <AlertTriangle className="w-5 h-5" />;
+  };
+
+  const getIconColorClass = () => {
+    if (isDestructive) return 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
+    if (iconType === 'printer') return 'bg-orange-500/10 text-orange-400 border border-orange-500/20';
+    return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
@@ -35,18 +51,14 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
       >
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-3">
-            <div
-              className={`p-2.5 rounded-xl ${
-                isDestructive
-                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              }`}
-            >
-              {isDestructive ? <Trash2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            <div className={`p-2.5 rounded-xl ${getIconColorClass()}`}>
+              {renderIcon()}
             </div>
             <div>
               <h3 className="text-base font-bold text-white tracking-tight">{title}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Safe Local Database Operation</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {subtitle || (isDestructive ? 'Safe Local Database Operation' : 'Manual Production Diagnostic')}
+              </p>
             </div>
           </div>
           <button
