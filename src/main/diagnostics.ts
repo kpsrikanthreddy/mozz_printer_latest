@@ -1,14 +1,27 @@
-import { app, dialog, BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
+
+let electronApp: any = null;
+let electronDialog: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const electron = require('electron');
+  if (typeof electron === 'object' && electron !== null) {
+    electronApp = electron.app;
+    electronDialog = electron.dialog;
+  }
+} catch {
+  // Outside electron runtime
+}
 
 let cachedLogDir: string | null = null;
 
 export function getLogDir(): string {
   if (cachedLogDir) return cachedLogDir;
   try {
-    if (app && typeof app.getPath === 'function') {
-      cachedLogDir = path.join(app.getPath('userData'), 'logs');
+    if (electronApp && typeof electronApp.getPath === 'function') {
+      cachedLogDir = path.join(electronApp.getPath('userData'), 'logs');
       return cachedLogDir;
     }
   } catch {
@@ -78,8 +91,8 @@ export function showFatalErrorDialog(title: string, message: string, detail?: an
   const dialogMessage = `${message}${technicalMsg}\n\nDiagnostic logs written to:\n${logFile}`;
 
   try {
-    if (dialog && typeof dialog.showErrorBox === 'function') {
-      dialog.showErrorBox(title, dialogMessage);
+    if (electronDialog && typeof electronDialog.showErrorBox === 'function') {
+      electronDialog.showErrorBox(title, dialogMessage);
     } else {
       console.error(`[CRITICAL ERROR DIALOG] ${title}\n${dialogMessage}`);
     }
@@ -102,9 +115,9 @@ export function initProcessErrorHandlers(): void {
   logMain('INFO', `Chrome: ${process.versions?.chrome || 'N/A'}`);
   logMain('INFO', `Platform: ${process.platform} (${process.arch})`);
   try {
-    if (app && typeof app.getPath === 'function') {
-      logMain('INFO', `UserData Path: ${app.getPath('userData')}`);
-      logMain('INFO', `App Path: ${app.getAppPath()}`);
+    if (electronApp && typeof electronApp.getPath === 'function') {
+      logMain('INFO', `UserData Path: ${electronApp.getPath('userData')}`);
+      logMain('INFO', `App Path: ${electronApp.getAppPath()}`);
     }
   } catch {
     // Ignored in test environment
@@ -137,8 +150,8 @@ export function initProcessErrorHandlers(): void {
   });
 
   // Global app-level render process gone fallback
-  if (app && typeof app.on === 'function') {
-    app.on('render-process-gone', (_event, webContents, details) => {
+  if (electronApp && typeof electronApp.on === 'function') {
+    electronApp.on('render-process-gone', (_event: any, webContents: any, details: any) => {
       const url = webContents.getURL();
       logMain(
         'ERROR',

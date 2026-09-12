@@ -32,6 +32,7 @@ interface DashboardTabProps {
   onRetryJob: (jobId: string) => void;
   onDeleteJob?: (job: PrintJob) => void;
   onCancelJob?: (job: PrintJob) => void;
+  isBrowserPreview?: boolean;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -45,6 +46,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onRetryJob,
   onDeleteJob,
   onCancelJob,
+  isBrowserPreview,
 }) => {
   const formatUptime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -146,8 +148,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   When orders are placed online or via POS, tickets will print automatically.
                 </p>
                 <button
-                  onClick={onOpenTestPrint}
-                  className="mt-4 px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium transition-colors"
+                  onClick={isBrowserPreview ? undefined : onOpenTestPrint}
+                  disabled={isBrowserPreview}
+                  title={
+                    isBrowserPreview
+                      ? 'Available only in the installed Windows Print Agent.'
+                      : 'Generate Test Ticket'
+                  }
+                  className={`mt-4 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    isBrowserPreview
+                      ? 'bg-slate-800/60 border border-slate-700/60 text-slate-500 cursor-not-allowed'
+                      : 'bg-orange-600 hover:bg-orange-500 text-white shadow-sm cursor-pointer'
+                  }`}
                 >
                   Generate Test Ticket
                 </button>

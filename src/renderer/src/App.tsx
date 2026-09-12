@@ -418,58 +418,6 @@ export default function App() {
     return res;
   };
 
-  if (!isElectron && !showDevPreview) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-slate-100 p-6 font-sans">
-        <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-8 text-center space-y-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
-            <Printer className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Production Safety Notice</span>
-            </div>
-            <h1 className="text-xl font-bold text-white tracking-tight leading-snug">
-              Mozz Print Agent must be opened from the installed Windows application.
-            </h1>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
-              Hardware printer drivers, ESC/POS thermal spools, local SQLite queues, and secure device authentication can only operate within the packaged Windows Electron runtime.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-left space-y-2 text-xs text-slate-400 font-mono">
-            <div className="flex justify-between">
-              <span>Environment:</span>
-              <span className="text-amber-400 font-semibold">Web Browser Detected</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Demo / Fake Orders:</span>
-              <span className="text-emerald-400 font-semibold">Permanently Removed</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Mock Queue Data:</span>
-              <span className="text-slate-300">0 records loaded</span>
-            </div>
-          </div>
-
-          <div className="pt-2 flex flex-col items-center space-y-3">
-            <p className="text-[11px] text-slate-500">
-              Please launch the desktop client from your Windows POS terminal to manage physical printers and station routing.
-            </p>
-            <button
-              onClick={() => setShowDevPreview(true)}
-              className="text-xs text-slate-500 hover:text-slate-300 underline transition-colors cursor-pointer"
-            >
-              Inspect UI Layout (Zero Mock Data)
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Header */}
@@ -478,7 +426,29 @@ export default function App() {
         settings={settings}
         onOpenRegister={() => setIsAuthModalOpen(true)}
         onOpenTestPrint={() => setIsTestModalOpen(true)}
+        isBrowserPreview={isBrowserPreview}
       />
+
+      {/* Prominent Preview Banner */}
+      {isBrowserPreview && (
+        <div
+          id="preview-mode-banner"
+          className="bg-amber-950/80 border-b border-amber-500/30 px-5 py-2.5 text-amber-200 flex items-center justify-between text-xs font-medium shrink-0 shadow-sm"
+        >
+          <div className="flex items-center space-x-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="font-semibold text-amber-300">
+              Preview mode — printing, pairing, backend connection, SSE, and test actions are disabled.
+            </span>
+            <span className="text-slate-400 hidden lg:inline text-[11px]">
+              (Mozz Print Agent must be opened from the installed Windows application.)
+            </span>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded border border-amber-500/30">
+            Preview Mode
+          </span>
+        </div>
+      )}
 
       {/* Main Content Layout (Sidebar + Stage) */}
       <div className="flex flex-1 overflow-hidden">
@@ -567,30 +537,6 @@ export default function App() {
 
         {/* Viewport Content Area */}
         <main className="flex-1 overflow-y-auto p-6 bg-slate-950">
-          {/* Browser Preview Notification Banner */}
-          {isBrowserPreview && (
-            <div
-              id="global-browser-preview-notice"
-              className="mb-5 px-4 py-3 rounded-xl bg-amber-950/40 border border-amber-600/40 text-amber-200 flex items-center justify-between text-xs shadow-md"
-            >
-              <div className="flex items-center space-x-3">
-                <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
-                  <AlertTriangle className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-amber-300">
-                    Browser preview—physical printing unavailable
-                  </span>
-                  <p className="text-[11px] text-amber-200/80 mt-0.5">
-                    Physical printing is disabled in the web browser preview and only functions inside the packaged Electron desktop application. Mock thermal spooling is enabled for virtual test drills.
-                  </p>
-                </div>
-              </div>
-              <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 font-mono text-[10px] font-bold uppercase tracking-wider shrink-0">
-                Web Preview
-              </span>
-            </div>
-          )}
           {activeTab === 'dashboard' && (
             <DashboardTab
               metrics={metrics}
@@ -603,6 +549,7 @@ export default function App() {
               onRetryJob={handleRetryJob}
               onDeleteJob={promptDeleteJob}
               onCancelJob={promptCancelJob}
+              isBrowserPreview={isBrowserPreview}
             />
           )}
 

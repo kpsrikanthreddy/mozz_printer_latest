@@ -48,10 +48,18 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const isBrowserPreview =
+    typeof window !== 'undefined' &&
+    (!window.mozzPrinterAPI?.isElectron || !!window.mozzPrinterAPI?.isBrowserPreview);
+
   if (!isOpen) return null;
 
   const handlePairSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBrowserPreview) {
+      setErrorMsg('Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.');
+      return;
+    }
     if (codeForm.pairingCode.trim().length !== 6) {
       setErrorMsg('Please enter a valid 6-digit registration code.');
       return;
@@ -80,6 +88,10 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBrowserPreview) {
+      setErrorMsg('Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.');
+      return;
+    }
     setIsLoading(true);
     setErrorMsg(null);
 
@@ -152,6 +164,13 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
             <span>Manual Setup</span>
           </button>
         </div>
+
+        {isBrowserPreview && (
+          <div className="mx-6 mt-4 p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-amber-300 text-xs flex items-start space-x-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+            <span>Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.</span>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="mx-6 mt-4 p-3 rounded-lg bg-rose-950/40 border border-rose-800/40 text-rose-300 text-xs flex items-start space-x-2">
@@ -230,7 +249,8 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isLoading || codeForm.pairingCode.length !== 6}
+                disabled={isBrowserPreview || isLoading || codeForm.pairingCode.length !== 6}
+                title={isBrowserPreview ? 'Available only in the installed Windows Print Agent.' : undefined}
                 className="px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all shadow-lg shadow-orange-950 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5" />
@@ -310,8 +330,9 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isLoading}
-                className="px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all shadow-lg shadow-orange-950 disabled:opacity-50"
+                disabled={isBrowserPreview || isLoading}
+                title={isBrowserPreview ? 'Available only in the installed Windows Print Agent.' : undefined}
+                className="px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all shadow-lg shadow-orange-950 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Linking...' : 'Save & Link Terminal'}
               </button>
