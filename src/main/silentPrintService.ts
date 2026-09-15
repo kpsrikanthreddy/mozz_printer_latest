@@ -12,6 +12,7 @@ try {
 import { localStore } from './storage.js';
 import { printerManager } from './printerManager.js';
 import { generateKotHtml, generateBillHtml } from './ticketTemplates.js';
+import { logMain } from './diagnostics.js';
 import type {
   PrintJob,
   KotTicketPayload,
@@ -58,9 +59,11 @@ export interface PrinterAdapter {
 
 export class ElectronPrinterAdapter implements PrinterAdapter {
   private browserWindowClass: any;
+  private timeoutMs: number;
 
-  constructor(browserWindowClass?: any) {
+  constructor(browserWindowClass?: any, timeoutMs = 45000) {
     this.browserWindowClass = browserWindowClass || ElectronBrowserWindow;
+    this.timeoutMs = timeoutMs;
   }
 
   public setBrowserWindowClass(cls: any) {
@@ -69,6 +72,10 @@ export class ElectronPrinterAdapter implements PrinterAdapter {
 
   public getBrowserWindowClass(): any {
     return this.browserWindowClass || ElectronBrowserWindow;
+  }
+
+  public setTimeoutMs(ms: number) {
+    this.timeoutMs = ms;
   }
 
   public async printHtml(
@@ -84,8 +91,31 @@ export class ElectronPrinterAdapter implements PrinterAdapter {
       };
     }
 
-    return new Promise<PrintBackendResult>((resolve) => {
-      let printWindow: any = new BW({
+    let printWindow: any = null;
+    let hasFinished = false;
+    let pageLoaded = false;
+    let documentReady = false;
+    let printInvoked = false;
+    let callbackReceived = false;
+
+    const cleanup = () => {
+      if (printWindow) {
+        try {
+          if (typeof printWindow.destroy === 'function' && !printWindow.isDestroyed?.()) {
+            printWindow.destroy();
+          } else if (typeof printWindow.close === 'function') {
+            printWindow.close();
+          }
+        } catch {
+          // ignore
+        }
+        printWindow = null;
+      }
+    };
+
+    try {
+      // Stage 1: Create hidden BrowserWindow
+      printWindow = new BW({
         show: false,
         width: 380,
         height: 800,
@@ -95,62 +125,127 @@ export class ElectronPrinterAdapter implements PrinterAdapter {
         },
       });
 
-      let hasFinished = false;
+      const stg1Log = `[SilentPrint] [STG-1] Print window created (hidden 380x800) for device: "${options.deviceName}"`;
+      console.log(stg1Log);
+      logMain('INFO', stg1Log, { deviceName: options.deviceName });
 
-      const cleanup = () => {
-        if (printWindow) {
-          try {
-            if (typeof printWindow.destroy === 'function' && !printWindow.isDestroyed?.()) {
-              printWindow.destroy();
-            } else if (typeof printWindow.close === 'function') {
-              printWindow.close();
-            }
-          } catch {
-            // ignore
-          }
-          printWindow = null;
+      // Listen for rendering failures if supported by webContents
+      if (printWindow.webContents && typeof printWindow.webContents.on === 'function') {
+        printWindow.webContents.on('did-fail-load', (_event: any, errorCode: number, errorDescription: string) => {
+          console.error(`[SilentPrint] [STG-2-ERR] Ticket rendering failed: ${errorDescription} (${errorCode}) for "${options.deviceName}"`);
+        });
+      }
+
+      // Stage 2: Load ticket HTML via data URL and explicitly await completion
+      const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+      console.log(`[SilentPrint] [STG-2] Loading ticket HTML via data URL for device: "${options.deviceName}"...`);
+
+      const loadPromise = printWindow.loadURL(dataUrl);
+      if (loadPromise && typeof loadPromise.then === 'function') {
+        await loadPromise;
+      }
+      pageLoaded = true;
+
+      const stg2Log = `[SilentPrint] [STG-2] Ticket HTML loaded successfully for device: "${options.deviceName}"`;
+      console.log(stg2Log);
+      logMain('INFO', stg2Log, { deviceName: options.deviceName });
+
+      // Await document and fonts readiness if webContents supports executeJavaScript
+      try {
+        if (printWindow.webContents && typeof printWindow.webContents.executeJavaScript === 'function') {
+          await printWindow.webContents.executeJavaScript(
+            'document.fonts ? document.fonts.ready.then(() => document.readyState) : document.readyState',
+            true
+          );
         }
-      };
+        documentReady = true;
+      } catch {
+        documentReady = true; // non-fatal fallback
+      }
 
-      // Technical safety timeout: 45 seconds (only fires if webContents.print callback is never invoked)
-      const timeout = setTimeout(() => {
-        if (hasFinished) return;
-        hasFinished = true;
-        cleanup();
-        resolve({
-          success: false,
-          failureReason: `[TIMEOUT] Print call timed out after 45s on printer "${options.deviceName}". Windows Spooler did not respond to print submission.`,
-        });
-      }, 45000);
+      // Stage 3 & 4: Call webContents.print exactly once, await callback or safety timeout
+      return await new Promise<PrintBackendResult>((resolve) => {
+        const timeoutMs = this.timeoutMs || 45000;
+        const timeout = setTimeout(() => {
+          if (hasFinished) return;
+          hasFinished = true;
+          cleanup();
 
-      printWindow.webContents.on('did-fail-load', (_event: any, errorCode: number, errorDescription: string) => {
-        if (hasFinished) return;
-        hasFinished = true;
-        clearTimeout(timeout);
-        cleanup();
-        resolve({
-          success: false,
-          failureReason: `[RENDER_FAILED] Failed to render ticket content: ${errorDescription} (${errorCode})`,
-        });
-      });
+          const diagStr = `[Diagnostics: pageLoaded=${pageLoaded}, documentReady=${documentReady}, printInvoked=${printInvoked}, callbackReceived=${callbackReceived} on "${options.deviceName}"]`;
+          console.error(`[SilentPrint] [STG-TIMEOUT] Print call timed out after ${Math.round(timeoutMs / 1000)}s on printer "${options.deviceName}". ${diagStr}`);
+          logMain('WARN', `Print call timed out on "${options.deviceName}"`, {
+            deviceName: options.deviceName,
+            diagnostics: { pageLoaded, documentReady, printInvoked, callbackReceived },
+          });
 
-      printWindow.webContents.on('did-finish-load', () => {
-        if (!printWindow) return;
-
-        printWindow.webContents.print(
-          options,
-          (success: boolean, failureReason?: string) => {
-            if (hasFinished) return;
-            hasFinished = true;
-            clearTimeout(timeout);
-            cleanup();
-            resolve({ success, failureReason });
+          if (printInvoked && !callbackReceived) {
+            resolve({
+              success: false,
+              failureReason: `Print request was submitted; Electron callback did not return. ${diagStr}`,
+            });
+          } else {
+            resolve({
+              success: false,
+              failureReason: `[TIMEOUT] Print preparation timed out after ${Math.round(timeoutMs / 1000)}s on printer "${options.deviceName}". ${diagStr}`,
+            });
           }
-        );
-      });
+        }, timeoutMs);
 
-      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    });
+        // Stage 3: Invoke webContents.print API
+        printInvoked = true;
+        const stg3Log = `[SilentPrint] [STG-3] Invoking webContents.print API for exact selected device: "${options.deviceName}"`;
+        console.log(stg3Log);
+        logMain('INFO', stg3Log, { deviceName: options.deviceName, options });
+
+        try {
+          printWindow.webContents.print(
+            options,
+            (success: boolean, failureReason?: string) => {
+              if (hasFinished) return;
+              hasFinished = true;
+              clearTimeout(timeout);
+              callbackReceived = true;
+
+              const stg4Log = `[SilentPrint] [STG-4] Electron print callback received for "${options.deviceName}": success=${success}${failureReason ? `, failureReason="${failureReason}"` : ''}`;
+              if (success) {
+                console.log(stg4Log);
+                logMain('INFO', stg4Log, { deviceName: options.deviceName });
+              } else {
+                console.error(stg4Log);
+                logMain('ERROR', stg4Log, { deviceName: options.deviceName, failureReason });
+              }
+
+              cleanup();
+              resolve({
+                success,
+                failureReason: success ? undefined : (failureReason || 'Electron print callback returned false'),
+              });
+            }
+          );
+        } catch (printErr: any) {
+          if (hasFinished) return;
+          hasFinished = true;
+          clearTimeout(timeout);
+          cleanup();
+          const invokeErr = `[ELECTRON_INVOKE_ERROR] Failed to invoke webContents.print: ${printErr?.message || String(printErr)}`;
+          console.error(`[SilentPrint] [STG-3-ERR] ${invokeErr}`);
+          logMain('ERROR', invokeErr, { deviceName: options.deviceName, error: printErr });
+          resolve({
+            success: false,
+            failureReason: invokeErr,
+          });
+        }
+      });
+    } catch (err: any) {
+      cleanup();
+      const failMsg = `[RENDER_FAILED] Failed to prepare ticket for print: ${err?.message || String(err)}`;
+      console.error(`[SilentPrint] [ERR] ${failMsg}`);
+      logMain('ERROR', failMsg, { deviceName: options.deviceName, error: err });
+      return {
+        success: false,
+        failureReason: failMsg,
+      };
+    }
   }
 }
 
@@ -188,10 +283,13 @@ export class SilentPrintService {
   /**
    * Internal test hook to inject a mock BrowserWindow class for integration testing.
    */
-  public setBrowserWindowMock(mockClass: any) {
+  public setBrowserWindowMock(mockClass: any, timeoutMs?: number) {
     ElectronBrowserWindow = mockClass;
     if (this.adapter instanceof ElectronPrinterAdapter) {
       this.adapter.setBrowserWindowClass(mockClass);
+      if (timeoutMs !== undefined) {
+        this.adapter.setTimeoutMs(timeoutMs);
+      }
     }
   }
 
@@ -208,7 +306,7 @@ export class SilentPrintService {
 
     // 1. Determine target station and printer configuration
     const stationConfig = localStore.getStationPrinter(job.station || (job.jobType === 'KOT' ? 'kitchen_master' : 'billing'));
-    const printerName = explicitPrinterName || stationConfig?.printerName || '80 Printer';
+    const printerName = explicitPrinterName || job.printerName || stationConfig?.printerName || 'POS-80-Series';
     const paperWidthMm: PaperWidthMm = explicitPaperWidth || stationConfig?.paperWidthMm || (job.jobType === 'KOT' ? 80 : 80);
     const copies = stationConfig?.copies || 1;
 
@@ -263,7 +361,8 @@ export class SilentPrintService {
 
     // 4. Validate physical printer existence
     const isAvailable = await printerManager.isPrinterAvailable(printerName);
-    if (!isAvailable && printerName !== '80 Printer') {
+    const lowerPrinterName = printerName.toLowerCase();
+    if (!isAvailable && lowerPrinterName !== 'pos-80-series' && lowerPrinterName !== '80 printer') {
       const errorMsg = `[PRINTER_NOT_FOUND] Printer "${printerName}" was not found in Windows Spooler. Ensure Windows driver is installed in Devices & Printers.`;
       console.error(`[SilentPrint] ${errorMsg}`);
       const durationMs = Date.now() - startTime;
@@ -300,7 +399,7 @@ export class SilentPrintService {
       };
     }
 
-    // 5. Dispatch print job through printer adapter
+    // 5. Dispatch print job through printer adapter with explicit 80mm thermal profile
     const printOptions: PrintOptions = {
       silent: true,
       printBackground: true,
@@ -315,9 +414,15 @@ export class SilentPrintService {
       },
     };
 
-    // For A4 Test profile (e.g. Canon G3010), configure A4 page size
+    // Explicit page size configuration in Electron-supported microns
     if (paperWidthMm === 'A4_TEST') {
       printOptions.pageSize = 'A4';
+    } else if (paperWidthMm === 58) {
+      // 58mm = 58,000 microns
+      printOptions.pageSize = { width: 58000, height: 297000 };
+    } else {
+      // 80mm thermal roll paper = 80,000 microns width
+      printOptions.pageSize = { width: 80000, height: 297000 };
     }
 
     const printResult = await this.adapter.printHtml(ticketHtml, printOptions);
@@ -326,6 +431,7 @@ export class SilentPrintService {
     if (printResult.success) {
       const successMsg = `Ticket sent to Windows spooler for ${printerName}.`;
       console.log(`[SilentPrint] ${successMsg} (${durationMs}ms) for job ${job.id}`);
+      logMain('INFO', successMsg, { jobId: job.id, printerName, durationMs });
 
       localStore.logAttempt({
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -346,6 +452,7 @@ export class SilentPrintService {
         printedAt: new Date().toISOString(),
         printerName,
         lastCallbackResult: successMsg,
+        errorMessage: undefined,
       };
       localStore.saveJob(completedJob);
 
@@ -359,9 +466,18 @@ export class SilentPrintService {
         status: 'submitted_to_spooler',
       };
     } else {
-      const errorDetails = printResult.failureReason || 'webContents.print rejected dispatch';
-      const errorMsg = `[ELECTRON_PRINT_FAILED] Windows print driver error: ${errorDetails}`;
+      const failureReason = printResult.failureReason || 'Electron print callback returned false';
+      const errorMsg = failureReason.startsWith('[') || failureReason.includes('Print request was submitted')
+        ? failureReason
+        : `[ELECTRON_PRINT_FAILED] ${failureReason}`;
+
       console.error(`[SilentPrint] Failed printing job ${job.id} on "${printerName}": ${errorMsg}`);
+      logMain('ERROR', `Failed printing job ${job.id} on "${printerName}"`, {
+        jobId: job.id,
+        printerName,
+        error: errorMsg,
+        durationMs,
+      });
 
       localStore.logAttempt({
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -428,7 +544,7 @@ export class SilentPrintService {
     const testTimestamp = Date.now();
     const testId = `TEST-${testTimestamp}`;
     const testOrderNum = `TEST-${testTimestamp}`;
-    const targetPrinter = customPrinterName || config.printerName || '80 Printer';
+    const targetPrinter = customPrinterName || config.printerName || 'POS-80-Series';
     const mockJob: PrintJob = {
       id: testId,
       isTest: true,

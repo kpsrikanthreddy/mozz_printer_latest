@@ -43,15 +43,18 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
       setTargetPrinter(stationMatch.printerName);
       setPaperWidth(stationMatch.paperWidthMm);
     } else {
+      const pos80 = discoveredPrinters.find((p) => p.name.toLowerCase() === 'pos-80-series');
       const p80 = discoveredPrinters.find((p) => p.name.toLowerCase() === '80 printer');
-      if (p80) {
+      if (pos80) {
+        setTargetPrinter(pos80.name);
+      } else if (p80) {
         setTargetPrinter(p80.name);
       } else {
         const def = discoveredPrinters.find((p) => p.isDefault && p.name !== 'MOCK_PRINTER');
         if (def) {
           setTargetPrinter(def.name);
         } else {
-          setTargetPrinter('80 Printer');
+          setTargetPrinter('POS-80-Series');
         }
       }
     }
@@ -123,14 +126,23 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
     setShowConfirmDialog(true);
   };
 
-  // Build printer list ensuring "80 Printer" and Canon G3010 series are included
+  // Build printer list ensuring "POS-80-Series", "80 Printer" and Canon G3010 series are included
   const printerOptions = [...discoveredPrinters];
-  if (!printerOptions.some((p) => p.name.toLowerCase() === '80 printer')) {
+  if (!printerOptions.some((p) => p.name.toLowerCase() === 'pos-80-series')) {
     printerOptions.unshift({
+      name: 'POS-80-Series',
+      displayName: 'POS-80-Series (Scantech 80mm Thermal Printer)',
+      description: 'Scantech / POS-80 Series Thermal Receipt Windows Driver',
+      isDefault: true,
+      isOnline: true,
+    });
+  }
+  if (!printerOptions.some((p) => p.name.toLowerCase() === '80 printer')) {
+    printerOptions.push({
       name: '80 Printer',
       displayName: '80 Printer (Default Windows Spooler)',
       description: 'Scantech 80mm Thermal Receipt Printer',
-      isDefault: true,
+      isDefault: false,
       isOnline: true,
     });
   }

@@ -57,11 +57,11 @@ export function generateKotHtml(payload: KotTicketPayload, paperWidthMm: PaperWi
         <style>
           @page {
             margin: ${isA4Test ? '5mm' : '0'};
-            size: ${isA4Test ? 'A4 portrait' : 'auto'};
+            size: ${isA4Test ? 'A4 portrait' : is58 ? '58mm auto' : '80mm auto'};
           }
           body {
             margin: 0;
-            padding: ${isA4Test ? '6px 10px' : '4px 6px'};
+            padding: ${isA4Test ? '6px 10px' : '2px 4px'};
             font-family: 'Courier New', Courier, monospace, system-ui;
             font-size: ${fontSize};
             line-height: 1.25;
@@ -70,6 +70,9 @@ export function generateKotHtml(payload: KotTicketPayload, paperWidthMm: PaperWi
             width: ${widthPx};
             max-width: ${widthPx};
             box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            page-break-inside: avoid;
             ${isA4Test ? 'border-right: 1px dashed #777; border-bottom: 1px dashed #777; padding-bottom: 16px;' : ''}
           }
           .center { text-align: center; }
@@ -224,11 +227,11 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
         <style>
           @page {
             margin: ${isA4Test ? '5mm' : '0'};
-            size: ${isA4Test ? 'A4 portrait' : 'auto'};
+            size: ${isA4Test ? 'A4 portrait' : is58 ? '58mm auto' : '80mm auto'};
           }
           body {
             margin: 0;
-            padding: ${isA4Test ? '6px 10px' : '4px 6px'};
+            padding: ${isA4Test ? '6px 10px' : '2px 4px'};
             font-family: 'Courier New', Courier, monospace, system-ui;
             font-size: ${fontSize};
             line-height: 1.25;
@@ -237,6 +240,9 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
             width: ${widthPx};
             max-width: ${widthPx};
             box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            page-break-inside: avoid;
             ${isA4Test ? 'border-right: 1px dashed #777; border-bottom: 1px dashed #777; padding-bottom: 16px;' : ''}
           }
           .center { text-align: center; }

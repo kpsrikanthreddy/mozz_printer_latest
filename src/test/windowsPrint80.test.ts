@@ -79,7 +79,7 @@ async function runWindows80PrinterTests() {
     // -------------------------------------------------------------------------
     // TEST 1: Electron BrowserWindow & webContents.print Mocking (Callback Success)
     // -------------------------------------------------------------------------
-    console.log('[Test 1] Mocking Electron webContents.print and verifying "80 Printer" options and callback success...');
+    console.log('[Test 1] Mocking Electron webContents.print and verifying "POS-80-Series" options and callback success...');
 
     let capturedElectronOptions: any = null;
     let windowDestroyed = false;
@@ -98,6 +98,7 @@ async function runWindows80PrinterTests() {
             if (!listeners[event]) listeners[event] = [];
             listeners[event].push(handler);
           },
+          executeJavaScript: async () => 'complete',
           print: (options: any, callback: (success: boolean, failureReason?: string) => void) => {
             capturedElectronOptions = options;
             // Complete callback asynchronously on next tick to simulate Electron behavior
@@ -110,20 +111,10 @@ async function runWindows80PrinterTests() {
             });
           },
         };
-
-        // When loadURL is called, trigger did-finish-load on next tick
-        (this as any)._triggerFinishLoad = () => {
-          const handlers = listeners['did-finish-load'] || [];
-          for (const h of handlers) {
-            h();
-          }
-        };
       }
 
-      loadURL(_url: string) {
-        queueMicrotask(() => {
-          (this as any)._triggerFinishLoad?.();
-        });
+      async loadURL(_url: string) {
+        return Promise.resolve();
       }
 
       destroy() {
@@ -149,8 +140,16 @@ async function runWindows80PrinterTests() {
     const electronService = new SilentPrintService();
     electronService.setBrowserWindowMock(MockBrowserWindow);
 
+    const configPOS80: PrinterConfig = {
+      station: 'kitchen_master',
+      printerName: 'POS-80-Series',
+      paperWidthMm: 80,
+      copies: 1,
+      isAutoPrint: true,
+    };
+
     // Await complete async print-submission promise before asserting
-    const result1 = await electronService.executeTestPrint('KOT', config80, '80 Printer');
+    const result1 = await electronService.executeTestPrint('KOT', configPOS80, 'POS-80-Series');
 
     // Confirm production print options
     assert.ok(capturedElectronOptions, 'print() options must have been captured');
@@ -161,8 +160,8 @@ async function runWindows80PrinterTests() {
     );
     assert.strictEqual(
       capturedElectronOptions.deviceName,
-      '80 Printer',
-      'Print job must pass exact deviceName "80 Printer"'
+      'POS-80-Series',
+      'Print job must pass exact deviceName "POS-80-Series"'
     );
     assert.strictEqual(
       capturedElectronOptions.printBackground,
@@ -178,7 +177,11 @@ async function runWindows80PrinterTests() {
     assert.strictEqual(capturedElectronOptions.margins?.bottom, 0, 'Bottom margin must be 0');
     assert.strictEqual(capturedElectronOptions.margins?.left, 0, 'Left margin must be 0');
     assert.strictEqual(capturedElectronOptions.margins?.right, 0, 'Right margin must be 0');
-    assert.strictEqual(capturedElectronOptions.pageSize, undefined, '80mm receipt should not force A4 pageSize');
+    assert.deepStrictEqual(
+      capturedElectronOptions.pageSize,
+      { width: 80000, height: 297000 },
+      '80mm receipt must configure 80000 microns pageSize'
+    );
 
     // Confirm status is submitted_to_spooler on callback success
     assert.strictEqual(result1.success, true, 'Result should be successful on callback success');
@@ -189,8 +192,8 @@ async function runWindows80PrinterTests() {
     );
     assert.strictEqual(
       result1.printerName,
-      '80 Printer',
-      'Printer name in result must be "80 Printer"'
+      'POS-80-Series',
+      'Printer name in result must be "POS-80-Series"'
     );
     assert.strictEqual(windowDestroyed, true, 'BrowserWindow must be cleaned up/destroyed');
 
@@ -206,7 +209,7 @@ async function runWindows80PrinterTests() {
     mockPrintShouldSucceed = false;
     mockPrintFailureReason = 'Windows Spooler RPC error 1722: The spooler service is not responding';
 
-    const failResult = await electronService.executeTestPrint('BILL', config80, '80 Printer');
+    const failResult = await electronService.executeTestPrint('BILL', configPOS80, 'POS-80-Series');
 
     assert.strictEqual(failResult.success, false, 'Result must be false on callback error');
     assert.strictEqual(
@@ -232,11 +235,11 @@ async function runWindows80PrinterTests() {
 
     // 3a. Callback success -> status is submitted_to_spooler
     captureAdapter.shouldSucceed = true;
-    const diSuccessResult = await diService.executeTestPrint('KOT', config80, '80 Printer');
+    const diSuccessResult = await diService.executeTestPrint('KOT', configPOS80, 'POS-80-Series');
 
     assert.ok(captureAdapter.capturedOptions, 'PrinterAdapter must have received PrintOptions');
     assert.strictEqual(captureAdapter.capturedOptions?.silent, true);
-    assert.strictEqual(captureAdapter.capturedOptions?.deviceName, '80 Printer');
+    assert.strictEqual(captureAdapter.capturedOptions?.deviceName, 'POS-80-Series');
     assert.strictEqual(captureAdapter.capturedOptions?.printBackground, true);
     assert.strictEqual(captureAdapter.capturedOptions?.margins.marginType, 'custom');
     assert.strictEqual(captureAdapter.capturedOptions?.margins.top, 0);
@@ -245,13 +248,13 @@ async function runWindows80PrinterTests() {
     assert.strictEqual(captureAdapter.capturedOptions?.margins.right, 0);
     assert.strictEqual(diSuccessResult.success, true);
     assert.strictEqual(diSuccessResult.status, 'submitted_to_spooler');
-    assert.strictEqual(diSuccessResult.printerName, '80 Printer');
+    assert.strictEqual(diSuccessResult.printerName, 'POS-80-Series');
     assert.ok(captureAdapter.capturedHtml?.includes('80mm') || captureAdapter.capturedHtml?.includes('KOT'), 'HTML payload should contain ticket data');
 
     // 3b. Callback error -> status is failed
     captureAdapter.shouldSucceed = false;
     captureAdapter.failureReason = 'Driver communication failed (Paper Out)';
-    const diFailResult = await diService.executeTestPrint('BILL', config80, '80 Printer');
+    const diFailResult = await diService.executeTestPrint('BILL', configPOS80, 'POS-80-Series');
 
     assert.strictEqual(diFailResult.success, false);
     assert.strictEqual(diFailResult.status, 'FAILED');
@@ -264,16 +267,83 @@ async function runWindows80PrinterTests() {
     // -------------------------------------------------------------------------
     console.log('[Test 4] Verifying 80mm thermal page configuration vs A4 Test mode...');
 
-    // 80mm standard profile: should not set pageSize to A4
+    // 80mm standard profile: should set pageSize to 80000 microns
     captureAdapter.shouldSucceed = true;
-    await diService.executeTestPrint('KOT', { ...config80, paperWidthMm: 80 }, '80 Printer');
-    assert.strictEqual(captureAdapter.capturedOptions?.pageSize, undefined, '80mm should not set pageSize to A4');
+    await diService.executeTestPrint('KOT', { ...configPOS80, paperWidthMm: 80 }, 'POS-80-Series');
+    assert.deepStrictEqual(
+      captureAdapter.capturedOptions?.pageSize,
+      { width: 80000, height: 297000 },
+      '80mm profile must configure 80000 microns pageSize'
+    );
+
+    // 58mm profile: should set pageSize to 58000 microns
+    await diService.executeTestPrint('KOT', { ...configPOS80, paperWidthMm: 58 }, 'POS-80-Series');
+    assert.deepStrictEqual(
+      captureAdapter.capturedOptions?.pageSize,
+      { width: 58000, height: 297000 },
+      '58mm profile must configure 58000 microns pageSize'
+    );
 
     // A4_TEST profile: should set pageSize to A4
-    await diService.executeTestPrint('KOT', { ...config80, paperWidthMm: 'A4_TEST' as any }, '80 Printer');
+    await diService.executeTestPrint('KOT', { ...configPOS80, paperWidthMm: 'A4_TEST' as any }, 'POS-80-Series');
     assert.strictEqual(captureAdapter.capturedOptions?.pageSize, 'A4', 'A4_TEST profile must configure pageSize: "A4"');
 
-    console.log('✓ Test 4 Passed: 80mm thermal receipt and A4 profile page sizes verified.\n');
+    console.log('✓ Test 4 Passed: 80mm thermal receipt, 58mm receipt, and A4 profile page sizes verified.\n');
+
+    // -------------------------------------------------------------------------
+    // TEST 5: Timeout Safety & Diagnostic Reporting
+    // -------------------------------------------------------------------------
+    console.log('[Test 5] Verifying timeout handling and diagnostic states...');
+
+    let timeoutWindowDestroyed = false;
+    class TimeoutMockBrowserWindow {
+      public webContents: any;
+      private destroyed = false;
+
+      constructor(_options: any) {
+        this.webContents = {
+          on: () => {},
+          executeJavaScript: async () => 'complete',
+          print: () => {
+            // Simulate hanging callback (callback never called)
+          },
+        };
+      }
+
+      async loadURL(_url: string) {
+        return Promise.resolve();
+      }
+
+      destroy() {
+        this.destroyed = true;
+        timeoutWindowDestroyed = true;
+      }
+
+      close() {
+        this.destroyed = true;
+        timeoutWindowDestroyed = true;
+      }
+
+      isDestroyed() {
+        return this.destroyed;
+      }
+    }
+
+    const timeoutService = new SilentPrintService();
+    // Injected mock with short 100ms timeout
+    timeoutService.setBrowserWindowMock(TimeoutMockBrowserWindow, 100);
+
+    const timeoutResult = await timeoutService.executeTestPrint('KOT', configPOS80, 'POS-80-Series');
+    assert.strictEqual(timeoutResult.success, false, 'Timed-out print must return success=false');
+    assert.strictEqual(timeoutResult.status, 'FAILED', 'Timed-out print must be marked FAILED');
+    assert.ok(
+      timeoutResult.error?.includes('Print request was submitted; Electron callback did not return') ||
+      timeoutResult.error?.includes('Diagnostics: pageLoaded=true'),
+      `Error message should contain diagnostic state: ${timeoutResult.error}`
+    );
+    assert.strictEqual(timeoutWindowDestroyed, true, 'Window must be destroyed after timeout');
+
+    console.log('✓ Test 5 Passed: Timeout safety and diagnostic states properly handled.\n');
 
   } finally {
     if (store) {

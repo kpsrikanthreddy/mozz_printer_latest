@@ -450,7 +450,7 @@ function setupIpcHandlers() {
       }
     ) => {
       const stationConfig = localStore.getStationPrinter(payload.station);
-      const targetPrinterName = payload.customPrinterName || stationConfig?.printerName || '80 Printer';
+      const targetPrinterName = payload.customPrinterName || stationConfig?.printerName || 'POS-80-Series';
       const config: PrinterConfig = {
         station: payload.station,
         printerName: targetPrinterName,
@@ -475,19 +475,34 @@ function setupIpcHandlers() {
     return localStore.getJobHistory(limit);
   });
 
+  const activeRetryingJobs = new Set<string>();
+
   ipcMain.handle('retry-job', async (_event: any, jobId: string) => {
+    if (activeRetryingJobs.has(jobId)) {
+      return { success: false, error: 'Retry already in progress for this job' };
+    }
     const job = localStore.getJob(jobId);
     if (!job) return { success: false, error: 'Job not found in local store' };
-    if (job.isTest || job.id.startsWith('TEST-')) {
-      const config = localStore.getStationPrinter(job.station);
-      const res = await silentPrintService.executeJob(job, config?.printerName, config?.paperWidthMm);
-      if (res.success) {
-        localStore.markJobCompleted(job.id);
-      }
-      return { success: res.success, error: res.error };
+    if (job.status === 'PRINTING') {
+      return { success: false, error: 'Print job is currently in progress' };
     }
-    const ok = await agentClient.processIncomingJob(job, true);
-    return { success: ok, error: ok ? undefined : 'Retry failed' };
+
+    activeRetryingJobs.add(jobId);
+    try {
+      if (job.isTest || job.id.startsWith('TEST-')) {
+        const config = localStore.getStationPrinter(job.station);
+        const targetPrinter = job.printerName || config?.printerName || 'POS-80-Series';
+        const res = await silentPrintService.executeJob(job, targetPrinter, config?.paperWidthMm);
+        if (res.success) {
+          localStore.markJobCompleted(job.id, 'submitted_to_spooler');
+        }
+        return { success: res.success, error: res.error };
+      }
+      const ok = await agentClient.processIncomingJob(job, true);
+      return { success: ok, error: ok ? undefined : 'Retry failed' };
+    } finally {
+      activeRetryingJobs.delete(jobId);
+    }
   });
 
   ipcMain.handle('reprint-job', async (_event: any, jobId: string, station?: string) => {

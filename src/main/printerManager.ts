@@ -128,9 +128,12 @@ export class PrinterManager {
    * Verifies if a given printer name is available on the system.
    */
   public async isPrinterAvailable(printerName: string, window?: any): Promise<boolean> {
-    if (printerName === 'MOCK_PRINTER' || printerName === '80 Printer') return true;
+    const lower = printerName.toLowerCase();
+    if (printerName === 'MOCK_PRINTER' || lower === 'pos-80-series' || lower === '80 printer') {
+      return true;
+    }
     const printers = await this.getAvailablePrinters(window);
-    return printers.some((p) => p.name.toLowerCase() === printerName.toLowerCase());
+    return printers.some((p) => p.name.toLowerCase() === lower);
   }
 }
 
