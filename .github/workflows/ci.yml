@@ -37,6 +37,49 @@ jobs:
           Write-Host "Installed Rollup version: $rollupVersion"
           npm install --no-save --no-package-lock "@rollup/rollup-win32-x64-msvc@$rollupVersion"
 
+      - name: Rebuild better-sqlite3 for Node runtime
+        shell: pwsh
+        run: |
+          $nodeVer = node --version
+          $nodeAbi = node -p "process.versions.modules"
+          Write-Host "============================================================"
+          Write-Host "🔨 Rebuilding better-sqlite3 for Node $nodeVer (ABI $nodeAbi)"
+          Write-Host "============================================================"
+          $rebuildOutput = npm rebuild better-sqlite3 --build-from-source 2>&1 | Out-String
+          Write-Host $rebuildOutput
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ FATAL: npm rebuild better-sqlite3 failed with exit code $LASTEXITCODE"
+            Write-Host "Node Version: $nodeVer"
+            Write-Host "Node Module ABI: $nodeAbi"
+            throw "Failed to rebuild better-sqlite3 for Node runtime."
+          }
+
+      - name: Node and better-sqlite3 diagnostics
+        shell: pwsh
+        run: |
+          Write-Host "============================================================"
+          Write-Host "🔍 Node & SQLite Runtime Diagnostics"
+          Write-Host "============================================================"
+          $nodeVer = node --version
+          $nodeAbi = node -p "process.versions.modules"
+          $sqliteVer = node -p "require('better-sqlite3/package.json').version"
+          Write-Host "node --version: $nodeVer"
+          Write-Host "node -p process.versions.modules: $nodeAbi"
+          Write-Host "better-sqlite3 version: $sqliteVer"
+
+          $binary = Get-ChildItem "node_modules/better-sqlite3" -Recurse -Filter "better_sqlite3.node" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $binary) {
+            Write-Host "❌ FATAL: better_sqlite3.node was NOT found for Node!"
+            Write-Host "Node Version: $nodeVer"
+            Write-Host "Node Module ABI: $nodeAbi"
+            Write-Host "Directory contents of node_modules/better-sqlite3:"
+            Get-ChildItem "node_modules/better-sqlite3" -Recurse | Select-Object FullName
+            throw "better_sqlite3.node native binary is missing for Node runtime!"
+          }
+
+          Write-Host "Node native binary verified at: $($binary.FullName) ($($binary.Length) bytes)"
+          node -e "const Database = require('better-sqlite3'); const db = new Database(':memory:'); const res = db.prepare('SELECT 1 as val').get(); if (!res || res.val !== 1) throw new Error('Query failed'); db.close(); console.log('✔ SQLite Node sanity check passed.');"
+
       - name: TypeScript checks
         run: npm run lint
 
