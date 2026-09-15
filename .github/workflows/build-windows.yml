@@ -88,7 +88,11 @@ jobs:
       - name: Run tests (Node runtime)
         run: npm test
 
-      # --- 4. Only AFTER all Node tests pass, rebuild better-sqlite3 for Electron ---
+      # --- 4. Build application (Vite renderer + main TypeScript) ---
+      - name: Build application
+        run: npm run build:electron
+
+      # --- 5. Only AFTER all Node tests pass, rebuild better-sqlite3 for Electron ---
       - name: Rebuild better-sqlite3 for Electron
         shell: pwsh
         run: |
@@ -99,7 +103,7 @@ jobs:
           }
           Write-Host "✔ electron-rebuild completed successfully"
 
-      # --- 5. Diagnostics before Electron packaging ---
+      # --- 6. Diagnostics before Electron packaging ---
       - name: Electron build diagnostics
         shell: pwsh
         run: |
@@ -121,9 +125,12 @@ jobs:
             throw "Electron-runtime SQLite smoke test FAILED with exit code $LASTEXITCODE"
           }
 
-      # --- 6. Build Windows installer (Never run npm test after Electron rebuild!) ---
+      # --- 7. Build Windows installer (Never run npm test after Electron rebuild!) ---
       - name: Build Windows installer
-        run: npm run build:win -- --publish never
+        shell: pwsh
+        run: |
+          Write-Host "Artifact-only build: GitHub release publishing is disabled."
+          npx electron-builder --win nsis --x64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
@@ -379,8 +386,10 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: mozz-printer-windows-setup
-          path: release/*Setup*.exe
-          if-no-files-found: error
+          path: |
+            release/*Setup*.exe
+            release/latest.yml
+          if-no-files-found: warn
 
       - name: Upload diagnostic logs
         if: always()
