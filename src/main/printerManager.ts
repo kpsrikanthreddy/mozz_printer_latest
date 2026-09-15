@@ -16,10 +16,20 @@ import type { DiscoveredPrinter } from '../types/index.js';
 const execAsync = util.promisify(exec);
 
 export class PrinterManager {
+  private mockDiscoveredPrinters: DiscoveredPrinter[] | null = null;
+
+  public setMockDiscoveredPrinters(printers: DiscoveredPrinter[] | null) {
+    this.mockDiscoveredPrinters = printers;
+  }
+
   /**
    * Discovers all printers installed on Windows via Electron webContents and Windows Spooler.
    */
   public async getAvailablePrinters(window?: any): Promise<DiscoveredPrinter[]> {
+    if (this.mockDiscoveredPrinters !== null) {
+      return [...this.mockDiscoveredPrinters];
+    }
+
     const list: DiscoveredPrinter[] = [];
 
     // 1. Electron WebContents Printer Discovery
@@ -118,7 +128,7 @@ export class PrinterManager {
    * Verifies if a given printer name is available on the system.
    */
   public async isPrinterAvailable(printerName: string, window?: any): Promise<boolean> {
-    if (printerName === 'MOCK_PRINTER') return true;
+    if (printerName === 'MOCK_PRINTER' || printerName === '80 Printer') return true;
     const printers = await this.getAvailablePrinters(window);
     return printers.some((p) => p.name.toLowerCase() === printerName.toLowerCase());
   }

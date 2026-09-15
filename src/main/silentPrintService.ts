@@ -29,6 +29,131 @@ export interface PrintResult {
   status?: string;
 }
 
+export interface PrintOptions {
+  silent: boolean;
+  printBackground: boolean;
+  deviceName: string;
+  copies: number;
+  margins: {
+    marginType: string;
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  };
+  pageSize?: any;
+}
+
+export interface PrintBackendResult {
+  success: boolean;
+  failureReason?: string;
+}
+
+export interface PrinterAdapter {
+  printHtml(
+    html: string,
+    options: PrintOptions
+  ): Promise<PrintBackendResult>;
+}
+
+export class ElectronPrinterAdapter implements PrinterAdapter {
+  private browserWindowClass: any;
+
+  constructor(browserWindowClass?: any) {
+    this.browserWindowClass = browserWindowClass || ElectronBrowserWindow;
+  }
+
+  public setBrowserWindowClass(cls: any) {
+    this.browserWindowClass = cls;
+  }
+
+  public getBrowserWindowClass(): any {
+    return this.browserWindowClass || ElectronBrowserWindow;
+  }
+
+  public async printHtml(
+    html: string,
+    options: PrintOptions
+  ): Promise<PrintBackendResult> {
+    const BW = this.getBrowserWindowClass();
+    if (!BW) {
+      return {
+        success: false,
+        failureReason:
+          'Browser preview—physical printing unavailable. Physical printing must work only inside the packaged Electron desktop application.',
+      };
+    }
+
+    return new Promise<PrintBackendResult>((resolve) => {
+      let printWindow: any = new BW({
+        show: false,
+        width: 380,
+        height: 800,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+
+      let hasFinished = false;
+
+      const cleanup = () => {
+        if (printWindow) {
+          try {
+            if (typeof printWindow.destroy === 'function' && !printWindow.isDestroyed?.()) {
+              printWindow.destroy();
+            } else if (typeof printWindow.close === 'function') {
+              printWindow.close();
+            }
+          } catch {
+            // ignore
+          }
+          printWindow = null;
+        }
+      };
+
+      // Technical safety timeout: 45 seconds (only fires if webContents.print callback is never invoked)
+      const timeout = setTimeout(() => {
+        if (hasFinished) return;
+        hasFinished = true;
+        cleanup();
+        resolve({
+          success: false,
+          failureReason: `[TIMEOUT] Print call timed out after 45s on printer "${options.deviceName}". Windows Spooler did not respond to print submission.`,
+        });
+      }, 45000);
+
+      printWindow.webContents.on('did-fail-load', (_event: any, errorCode: number, errorDescription: string) => {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(timeout);
+        cleanup();
+        resolve({
+          success: false,
+          failureReason: `[RENDER_FAILED] Failed to render ticket content: ${errorDescription} (${errorCode})`,
+        });
+      });
+
+      printWindow.webContents.on('did-finish-load', () => {
+        if (!printWindow) return;
+
+        printWindow.webContents.print(
+          options,
+          (success: boolean, failureReason?: string) => {
+            if (hasFinished) return;
+            hasFinished = true;
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ success, failureReason });
+          }
+        );
+      });
+
+      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    });
+  }
+}
+
 /**
  * Silent Thermal Printing Service
  *
@@ -46,11 +171,28 @@ export interface PrintResult {
  *   prior to dispatch where the Windows subsystem makes that information available.
  */
 export class SilentPrintService {
+  private adapter: PrinterAdapter;
+
+  constructor(adapter?: PrinterAdapter) {
+    this.adapter = adapter || new ElectronPrinterAdapter();
+  }
+
+  public setPrinterAdapter(adapter: PrinterAdapter) {
+    this.adapter = adapter;
+  }
+
+  public getPrinterAdapter(): PrinterAdapter {
+    return this.adapter;
+  }
+
   /**
    * Internal test hook to inject a mock BrowserWindow class for integration testing.
    */
   public setBrowserWindowMock(mockClass: any) {
     ElectronBrowserWindow = mockClass;
+    if (this.adapter instanceof ElectronPrinterAdapter) {
+      this.adapter.setBrowserWindowClass(mockClass);
+    }
   }
 
   /**
@@ -158,260 +300,100 @@ export class SilentPrintService {
       };
     }
 
-    // 5. Create offscreen background window for silent printing
-    return new Promise((resolve) => {
-      if (!ElectronBrowserWindow) {
-        const errorMsg = 'Browser preview—physical printing unavailable. Physical printing must work only inside the packaged Electron desktop application.';
-        const durationMs = Date.now() - startTime;
-        localStore.logAttempt({
-          id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          jobId: job.id,
-          attemptNumber: (job.retryCount || 0) + 1,
-          status: 'FAILURE',
-          printerName,
-          errorMessage: errorMsg,
-          durationMs,
-          timestamp: new Date().toISOString(),
-        });
-        const failedJob: PrintJob = {
-          ...job,
-          status: 'FAILED',
-          failedAt: new Date().toISOString(),
-          errorMessage: errorMsg,
-          printerName,
-          lastCallbackResult: errorMsg,
-        };
-        localStore.saveJob(failedJob);
-        resolve({
-          success: false,
-          error: errorMsg,
-          durationMs,
-          printerName,
-          status: 'FAILED',
-        });
-        return;
-      }
+    // 5. Dispatch print job through printer adapter
+    const printOptions: PrintOptions = {
+      silent: true,
+      printBackground: true,
+      deviceName: printerName,
+      copies: copies || 1,
+      margins: {
+        marginType: 'custom',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+      },
+    };
 
-      let printWindow: any = new ElectronBrowserWindow({
-        show: false,
-        width: 380,
-        height: 800,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        },
+    // For A4 Test profile (e.g. Canon G3010), configure A4 page size
+    if (paperWidthMm === 'A4_TEST') {
+      printOptions.pageSize = 'A4';
+    }
+
+    const printResult = await this.adapter.printHtml(ticketHtml, printOptions);
+    const durationMs = Date.now() - startTime;
+
+    if (printResult.success) {
+      const successMsg = `Ticket sent to Windows spooler for ${printerName}.`;
+      console.log(`[SilentPrint] ${successMsg} (${durationMs}ms) for job ${job.id}`);
+
+      localStore.logAttempt({
+        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        jobId: job.id,
+        attemptNumber: (job.retryCount || 0) + 1,
+        status: 'SUCCESS',
+        printerName,
+        durationMs,
+        timestamp: new Date().toISOString(),
       });
 
-      let hasFinished = false;
+      // Update status to submitted_to_spooler on successful dispatch
+      localStore.markJobCompleted(job.id, 'submitted_to_spooler');
 
-      const cleanup = () => {
-        if (printWindow) {
-          try {
-            if (typeof printWindow.destroy === 'function' && !printWindow.isDestroyed?.()) {
-              printWindow.destroy();
-            } else if (typeof printWindow.close === 'function') {
-              printWindow.close();
-            }
-          } catch {
-            // ignore
-          }
-          printWindow = null;
-        }
+      const completedJob: PrintJob = {
+        ...job,
+        status: 'submitted_to_spooler',
+        printedAt: new Date().toISOString(),
+        printerName,
+        lastCallbackResult: successMsg,
       };
+      localStore.saveJob(completedJob);
 
-      // Technical safety timeout: 45 seconds (only fires if webContents.print callback is never invoked)
-      const timeout = setTimeout(() => {
-        if (hasFinished) return;
-        hasFinished = true;
-        cleanup();
-        const durationMs = Date.now() - startTime;
-        const timeoutError = `[TIMEOUT] Print call timed out after 45s on printer "${printerName}". Windows Spooler did not respond to print submission.`;
-        console.error(`[SilentPrint] ${timeoutError}`);
+      this.notifyJobEvent(completedJob);
 
-        localStore.logAttempt({
-          id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          jobId: job.id,
-          attemptNumber: (job.retryCount || 0) + 1,
-          status: 'FAILURE',
-          printerName,
-          errorMessage: timeoutError,
-          durationMs,
-          timestamp: new Date().toISOString(),
-        });
+      return {
+        success: true,
+        message: successMsg,
+        durationMs,
+        printerName,
+        status: 'submitted_to_spooler',
+      };
+    } else {
+      const errorDetails = printResult.failureReason || 'webContents.print rejected dispatch';
+      const errorMsg = `[ELECTRON_PRINT_FAILED] Windows print driver error: ${errorDetails}`;
+      console.error(`[SilentPrint] Failed printing job ${job.id} on "${printerName}": ${errorMsg}`);
 
-        const failedJob: PrintJob = {
-          ...job,
-          status: 'FAILED',
-          failedAt: new Date().toISOString(),
-          errorMessage: timeoutError,
-          printerName,
-          lastCallbackResult: timeoutError,
-        };
-        localStore.saveJob(failedJob);
-
-        this.notifyJobEvent(failedJob);
-
-        resolve({
-          success: false,
-          error: timeoutError,
-          durationMs,
-          printerName,
-          status: 'FAILED',
-        });
-      }, 45000);
-
-      printWindow.webContents.on('did-fail-load', (_event: any, errorCode: number, errorDescription: string) => {
-        if (hasFinished) return;
-        hasFinished = true;
-        clearTimeout(timeout);
-        cleanup();
-        const durationMs = Date.now() - startTime;
-        const errorMsg = `[RENDER_FAILED] Failed to render ticket content: ${errorDescription} (${errorCode})`;
-        console.error(`[SilentPrint] ${errorMsg}`);
-
-        localStore.logAttempt({
-          id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          jobId: job.id,
-          attemptNumber: (job.retryCount || 0) + 1,
-          status: 'FAILURE',
-          printerName,
-          errorMessage: errorMsg,
-          durationMs,
-          timestamp: new Date().toISOString(),
-        });
-
-        const failedJob: PrintJob = {
-          ...job,
-          status: 'FAILED',
-          failedAt: new Date().toISOString(),
-          errorMessage: errorMsg,
-          printerName,
-          lastCallbackResult: errorMsg,
-        };
-        localStore.saveJob(failedJob);
-
-        this.notifyJobEvent(failedJob);
-
-        resolve({
-          success: false,
-          error: errorMsg,
-          durationMs,
-          printerName,
-          status: 'FAILED',
-        });
+      localStore.logAttempt({
+        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        jobId: job.id,
+        attemptNumber: (job.retryCount || 0) + 1,
+        status: 'FAILURE',
+        printerName,
+        errorMessage: errorMsg,
+        durationMs,
+        timestamp: new Date().toISOString(),
       });
 
-      printWindow.webContents.on('did-finish-load', () => {
-        if (!printWindow) return;
+      const failedJob: PrintJob = {
+        ...job,
+        status: 'FAILED',
+        failedAt: new Date().toISOString(),
+        errorMessage: errorMsg,
+        printerName,
+        lastCallbackResult: errorMsg,
+      };
+      localStore.saveJob(failedJob);
 
-        // Configure native thermal receipt printing options
-        // Margins zero/minimal, silent true (no dialog), deviceName preserved unchanged
-        const printOptions: any = {
-          silent: true,
-          printBackground: true,
-          deviceName: printerName,
-          copies: copies || 1,
-          margins: {
-            marginType: 'custom',
-            top: 0,
-            bottom: 0,
-            left: 0,
-            right: 0,
-          },
-        };
+      this.notifyJobEvent(failedJob);
 
-        // For A4 Test profile (e.g. Canon G3010), configure A4 page size
-        if (paperWidthMm === 'A4_TEST') {
-          printOptions.pageSize = 'A4';
-        }
-
-        printWindow.webContents.print(
-          printOptions,
-          (success: boolean, failureReason?: string) => {
-            if (hasFinished) return;
-            hasFinished = true;
-            clearTimeout(timeout);
-            cleanup();
-
-            const durationMs = Date.now() - startTime;
-            if (success) {
-              const successMsg = `Ticket sent to Windows spooler for ${printerName}.`;
-              console.log(`[SilentPrint] ${successMsg} (${durationMs}ms) for job ${job.id}`);
-
-              localStore.logAttempt({
-                id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                jobId: job.id,
-                attemptNumber: (job.retryCount || 0) + 1,
-                status: 'SUCCESS',
-                printerName,
-                durationMs,
-                timestamp: new Date().toISOString(),
-              });
-
-              // Update status to submitted_to_spooler on successful dispatch
-              localStore.markJobCompleted(job.id, 'submitted_to_spooler');
-
-              const completedJob: PrintJob = {
-                ...job,
-                status: 'submitted_to_spooler',
-                printedAt: new Date().toISOString(),
-                printerName,
-                lastCallbackResult: successMsg,
-              };
-              localStore.saveJob(completedJob);
-
-              this.notifyJobEvent(completedJob);
-
-              resolve({
-                success: true,
-                message: successMsg,
-                durationMs,
-                printerName,
-                status: 'submitted_to_spooler',
-              });
-            } else {
-              const errorDetails = failureReason || 'webContents.print rejected dispatch';
-              const errorMsg = `[ELECTRON_PRINT_FAILED] Windows print driver error: ${errorDetails}`;
-              console.error(`[SilentPrint] Failed printing job ${job.id} on "${printerName}": ${errorMsg}`);
-
-              localStore.logAttempt({
-                id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                jobId: job.id,
-                attemptNumber: (job.retryCount || 0) + 1,
-                status: 'FAILURE',
-                printerName,
-                errorMessage: errorMsg,
-                durationMs,
-                timestamp: new Date().toISOString(),
-              });
-
-              const failedJob: PrintJob = {
-                ...job,
-                status: 'FAILED',
-                failedAt: new Date().toISOString(),
-                errorMessage: errorMsg,
-                printerName,
-                lastCallbackResult: errorMsg,
-              };
-              localStore.saveJob(failedJob);
-
-              this.notifyJobEvent(failedJob);
-
-              resolve({
-                success: false,
-                error: errorMsg,
-                durationMs,
-                printerName,
-                status: 'FAILED',
-              });
-            }
-          }
-        );
-      });
-
-      // Load HTML data URL into silent print window
-      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(ticketHtml)}`);
-    });
+      return {
+        success: false,
+        error: errorMsg,
+        durationMs,
+        printerName,
+        status: 'FAILED',
+      };
+    }
   }
 
   private notifyJobEvent(job: PrintJob) {
