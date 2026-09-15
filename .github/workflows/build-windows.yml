@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
 
       - name: Install setuptools for Python
@@ -39,117 +39,56 @@ jobs:
           Write-Host "Installed Rollup version: $rollupVersion"
           npm install --no-save --no-package-lock "@rollup/rollup-win32-x64-msvc@$rollupVersion"
 
-      # --- Step A: Node Rebuild & Verification (lint & Node unit tests) ---
+      # --- 1. Rebuild better-sqlite3 for current Node runtime ---
       - name: Rebuild better-sqlite3 for Node runtime
         shell: pwsh
         run: |
-          $nodeVer = node --version
-          $nodeAbi = node -p "process.versions.modules"
-          Write-Host "============================================================"
-          Write-Host "🔨 Rebuilding better-sqlite3 for Node $nodeVer (ABI $nodeAbi)"
-          Write-Host "============================================================"
-          $rebuildOutput = npm rebuild better-sqlite3 --build-from-source 2>&1 | Out-String
-          Write-Host $rebuildOutput
+          Write-Host "Rebuilding better-sqlite3 for current Node runtime..."
+          npm rebuild better-sqlite3 --build-from-source
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "❌ FATAL: npm rebuild better-sqlite3 failed for Node with exit code $LASTEXITCODE"
-            Write-Host "Node Version: $nodeVer"
-            Write-Host "Node Module ABI: $nodeAbi"
             throw "Failed to rebuild better-sqlite3 for Node runtime."
           }
 
-      - name: Node and better-sqlite3 diagnostics
+      # --- 2. Diagnostics before Node tests ---
+      - name: Node test diagnostics
         shell: pwsh
         run: |
-          Write-Host "============================================================"
-          Write-Host "🔍 Node & SQLite Runtime Diagnostics"
-          Write-Host "============================================================"
-          $nodeVer = node --version
-          $nodeAbi = node -p "process.versions.modules"
-          $sqliteVer = node -p "require('better-sqlite3/package.json').version"
-          Write-Host "node --version: $nodeVer"
-          Write-Host "node -p process.versions.modules: $nodeAbi"
-          Write-Host "better-sqlite3 version: $sqliteVer"
+          Write-Host "=== Node Test Diagnostics ==="
+          node --version
+          node -p "process.versions.modules"
+          node -p "process.versions.electron || 'not-electron'"
 
+      # --- 3. Node checks and Node tests immediately after Node rebuild ---
       - name: TypeScript checks
         run: npm run lint
 
       - name: Run tests (Node runtime)
         run: npm test
 
-      # --- Step B: Build frontend/TypeScript first ---
-      - name: Build frontend and TypeScript
-        run: npm run build:electron
-
-      # --- Step C: Rebuild native dependencies specifically for Electron ---
-      - name: Rebuild native dependencies for Electron
+      # --- 4. Only AFTER all Node tests pass, rebuild better-sqlite3 for Electron ---
+      - name: Rebuild better-sqlite3 for Electron
         shell: pwsh
         run: |
-          $electronVersion = node -p "require('./node_modules/electron/package.json').version"
-          Write-Host "============================================================"
-          Write-Host "🔨 Rebuilding native dependencies for Electron $electronVersion (x64)"
-          Write-Host "============================================================"
-          
-          # Attempt rebuild using electron-builder install-app-deps, with fallback to electron-rebuild
-          $rebuildOutput = ""
-          try {
-            $rebuildOutput = npx electron-builder install-app-deps 2>&1 | Out-String
-            Write-Host $rebuildOutput
-            if ($LASTEXITCODE -ne 0) {
-              throw "electron-builder install-app-deps exited with code $LASTEXITCODE"
-            }
-          } catch {
-            Write-Warning "install-app-deps encountered an issue: $_. Falling back to project electron-rebuild..."
-            $rebuildOutput = npm exec -- electron-rebuild --force --only better-sqlite3 --version $electronVersion --arch x64 2>&1 | Out-String
-            Write-Host $rebuildOutput
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "❌ Rebuild output from electron-rebuild:"
-              Write-Host $rebuildOutput
-              throw "Electron native dependency rebuild failed with exit code $LASTEXITCODE"
-            }
+          Write-Host "Rebuilding better-sqlite3 for Electron..."
+          npx electron-rebuild --force --only better-sqlite3 --arch=x64
+          if ($LASTEXITCODE -ne 0) {
+            throw "electron-rebuild failed with exit code $LASTEXITCODE"
           }
+          Write-Host "✔ electron-rebuild completed successfully"
 
-      - name: Electron runtime diagnostics and binary verification
+      # --- 5. Diagnostics before Electron packaging ---
+      - name: Electron build diagnostics
         shell: pwsh
         run: |
-          Write-Host "============================================================"
-          Write-Host "🔍 Electron & SQLite Runtime Diagnostics"
-          Write-Host "============================================================"
-          $nodeVer = node --version
-          $nodeAbi = node -p "process.versions.modules"
-          $electronVer = node -p "require('./node_modules/electron/package.json').version"
-          Write-Host "Node version: $nodeVer"
-          Write-Host "Node ABI (modules): $nodeAbi"
-          Write-Host "Installed Electron version: $electronVer"
-          
-          $electronAbi = "unknown"
-          try {
-            $electronAbi = node -e "const cp = require('child_process'); const el = require('electron'); const out = cp.execFileSync(el, ['-e', 'console.log(process.versions.modules)'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }); console.log(out.toString().trim());"
-            Write-Host "Electron ABI/runtime target: $electronAbi"
-          } catch {
-            Write-Host "Could not query Electron ABI directly; target Electron version: $electronVer"
-          }
-
-          $binary = Get-ChildItem `
-            "node_modules/better-sqlite3" `
-            -Recurse `
-            -Filter "better_sqlite3.node" `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-
+          Write-Host "=== Electron Build Diagnostics ==="
+          node -p "require('./node_modules/electron/package.json').version"
+          $binary = Get-ChildItem "node_modules/better-sqlite3" -Recurse -Filter "better_sqlite3.node" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $binary) {
-            Write-Host "❌ FATAL: better_sqlite3.node was not generated after Electron rebuild!"
-            Write-Host "Detailed Diagnostics:"
-            Write-Host "  Node Version: $nodeVer"
-            Write-Host "  Node ABI: $nodeAbi"
-            Write-Host "  Electron Version: $electronVer"
-            Write-Host "  Electron ABI Target: $electronAbi"
-            Write-Host "Listing files in node_modules/better-sqlite3:"
-            Get-ChildItem "node_modules/better-sqlite3" -Recurse | Select-Object FullName
-            throw "better_sqlite3.node was not generated after Electron rebuild!"
+            throw "better_sqlite3.node not found after electron-rebuild!"
           }
-
-          Write-Host "Native binary generated for Electron: $($binary.FullName)"
+          Write-Host "Location of better_sqlite3.node: $($binary.FullName)"
           Write-Host "Binary size: $($binary.Length) bytes"
+          Write-Host "✔ electron-rebuild completed successfully"
 
       - name: Electron-runtime SQLite smoke test
         shell: pwsh
@@ -159,7 +98,7 @@ jobs:
             throw "Electron-runtime SQLite smoke test FAILED with exit code $LASTEXITCODE"
           }
 
-      # --- Step D: Build Windows installer (NEVER run Node unit tests after Electron rebuild!) ---
+      # --- 6. Build Windows installer (Never run npm test after Electron rebuild!) ---
       - name: Build Windows installer
         run: npm run build:win -- --publish never
         env:
