@@ -228,7 +228,13 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                         </span>
                       </td>
                       <td className="py-3 px-4 text-slate-300 font-medium text-[11px]">
-                        {getStationDisplayLabel(job.station)}
+                        <div>{getStationDisplayLabel(job.station)}</div>
+                        {job.printerName && (
+                          <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                            <Printer className="w-2.5 h-2.5" />
+                            <span>{job.printerName}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-slate-400">
                         {new Date(job.createdAt).toLocaleString([], {
@@ -241,14 +247,14 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                       <td className="py-3 px-4">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                            job.status === 'PRINTED'
+                            job.status === 'PRINTED' || job.status === 'submitted_to_spooler'
                               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                               : job.status === 'FAILED'
                               ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                               : 'bg-slate-800 text-slate-400 border-slate-700'
                           }`}
                         >
-                          {job.status}
+                          {job.status === 'submitted_to_spooler' ? 'SPOOLED' : job.status}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">

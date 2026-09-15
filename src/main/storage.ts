@@ -6,6 +6,7 @@ import type {
   AppSettings,
   PrinterConfig,
   PrintJob,
+  PrintJobStatus,
   PrintAttemptLog,
   PrinterStation,
 } from '../types/index.js';
@@ -276,8 +277,8 @@ export class LocalStorageManager {
     return this.queue.isJobCompleted(jobId, idempotencyKey);
   }
 
-  public markJobCompleted(jobId: string): void {
-    this.queue.markJobCompleted(jobId);
+  public markJobCompleted(jobId: string, status?: PrintJobStatus): void {
+    this.queue.markJobCompleted(jobId, status);
   }
 
   public saveJob(job: PrintJob): void {

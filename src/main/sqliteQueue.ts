@@ -80,6 +80,7 @@ export class SqlitePrintQueue {
       this.openDatabase();
       this.applyPragmas();
       this.createSchema();
+      this.migrateSchemaIfNeeded();
       this.backfillMissingOrderNumbers();
       this.performStartupRecovery();
       this.applyRetentionCleanup();
@@ -128,7 +129,7 @@ export class SqlitePrintQueue {
         job_type TEXT NOT NULL CHECK(job_type IN ('KOT', 'BILL')),
         station TEXT NOT NULL,
         idempotency_key TEXT UNIQUE NOT NULL,
-        status TEXT NOT NULL CHECK(status IN ('PENDING', 'CLAIMED', 'PRINTING', 'PRINTED', 'FAILED', 'UNCERTAIN_RECOVERY', 'CANCELLED', 'SKIPPED')),
+        status TEXT NOT NULL CHECK(status IN ('PENDING', 'CLAIMED', 'PRINTING', 'submitted_to_spooler', 'SUBMITTED_TO_SPOOLER', 'PRINTED', 'FAILED', 'UNCERTAIN_RECOVERY', 'CANCELLED', 'SKIPPED')),
         is_reprint INTEGER NOT NULL DEFAULT 0,
         claimed_by_device_id TEXT,
         claimed_at TEXT,
@@ -140,7 +141,9 @@ export class SqlitePrintQueue {
         payload_json TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        local_received_at TEXT NOT NULL
+        local_received_at TEXT NOT NULL,
+        printer_name TEXT,
+        last_callback_result TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_jobs_status ON print_jobs(status, created_at DESC);
@@ -184,6 +187,79 @@ export class SqlitePrintQueue {
         updated_at TEXT NOT NULL
       );
     `);
+  }
+
+  /**
+   * Migrate existing SQLite schemas to support submitted_to_spooler status and printer info columns.
+   */
+  private migrateSchemaIfNeeded(): void {
+    if (!this.db) return;
+    try {
+      try {
+        this.db.prepare(`ALTER TABLE print_jobs ADD COLUMN printer_name TEXT`).run();
+      } catch {
+        // column may already exist
+      }
+      try {
+        this.db.prepare(`ALTER TABLE print_jobs ADD COLUMN last_callback_result TEXT`).run();
+      } catch {
+        // column may already exist
+      }
+
+      // Check if table schema needs migration for submitted_to_spooler CHECK constraint
+      const tableRow: any = this.db
+        .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='print_jobs'`)
+        .get();
+      if (tableRow?.sql && !tableRow.sql.includes('submitted_to_spooler')) {
+        this.db.exec(`
+          PRAGMA foreign_keys=off;
+          ALTER TABLE print_jobs RENAME TO print_jobs_migration_old;
+          CREATE TABLE print_jobs (
+            id TEXT PRIMARY KEY,
+            restaurant_id TEXT NOT NULL,
+            branch_id TEXT NOT NULL,
+            order_id TEXT NOT NULL,
+            order_number TEXT,
+            job_type TEXT NOT NULL CHECK(job_type IN ('KOT', 'BILL')),
+            station TEXT NOT NULL,
+            idempotency_key TEXT UNIQUE NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('PENDING', 'CLAIMED', 'PRINTING', 'submitted_to_spooler', 'SUBMITTED_TO_SPOOLER', 'PRINTED', 'FAILED', 'UNCERTAIN_RECOVERY', 'CANCELLED', 'SKIPPED')),
+            is_reprint INTEGER NOT NULL DEFAULT 0,
+            claimed_by_device_id TEXT,
+            claimed_at TEXT,
+            printed_at TEXT,
+            failed_at TEXT,
+            error_message TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            local_received_at TEXT NOT NULL,
+            printer_name TEXT,
+            last_callback_result TEXT
+          );
+          INSERT INTO print_jobs (
+            id, restaurant_id, branch_id, order_id, order_number, job_type, station,
+            idempotency_key, status, is_reprint, claimed_by_device_id, claimed_at,
+            printed_at, failed_at, error_message, retry_count, max_retries,
+            payload_json, created_at, updated_at, local_received_at
+          ) SELECT 
+            id, restaurant_id, branch_id, order_id, order_number, job_type, station,
+            idempotency_key, status, is_reprint, claimed_by_device_id, claimed_at,
+            printed_at, failed_at, error_message, retry_count, max_retries,
+            payload_json, created_at, updated_at, local_received_at
+          FROM print_jobs_migration_old;
+          DROP TABLE print_jobs_migration_old;
+          CREATE INDEX IF NOT EXISTS idx_jobs_status ON print_jobs(status, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_jobs_idempotency ON print_jobs(idempotency_key);
+          CREATE INDEX IF NOT EXISTS idx_jobs_order ON print_jobs(order_id);
+          PRAGMA foreign_keys=on;
+        `);
+      }
+    } catch (migErr) {
+      console.warn('[SqliteQueue] Schema check/migration note:', migErr);
+    }
   }
 
   /**
@@ -337,12 +413,13 @@ export class SqlitePrintQueue {
     return !!row;
   }
 
-  public markJobCompleted(jobId: string): void {
+  public markJobCompleted(jobId: string, status: PrintJobStatus = 'submitted_to_spooler'): void {
     if (!this.db) return;
 
     const job = this.getJob(jobId);
     const now = new Date().toISOString();
     const idempotencyKey = job?.idempotencyKey || `job_${jobId}`;
+    const targetStatus = status || 'submitted_to_spooler';
 
     const tx = this.db.transaction(() => {
       this.db!
@@ -355,10 +432,10 @@ export class SqlitePrintQueue {
       this.db!
         .prepare(
           `UPDATE print_jobs 
-           SET status = 'PRINTED', printed_at = ?, updated_at = ?
+           SET status = ?, printed_at = ?, updated_at = ?
            WHERE id = ?`
         )
-        .run(now, now, jobId);
+        .run(targetStatus, now, now, jobId);
     });
 
     tx();
@@ -388,18 +465,22 @@ export class SqlitePrintQueue {
           id, restaurant_id, branch_id, order_id, order_number, job_type, station,
           idempotency_key, status, is_reprint, claimed_by_device_id, claimed_at,
           printed_at, failed_at, error_message, retry_count, max_retries,
-          payload_json, created_at, updated_at, local_received_at
+          payload_json, created_at, updated_at, local_received_at,
+          printer_name, last_callback_result
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?,
-          ?, ?, ?, ?
+          ?, ?, ?, ?,
+          ?, ?
         )
         ON CONFLICT(id) DO UPDATE SET
           order_number = COALESCE(excluded.order_number, print_jobs.order_number),
           status = excluded.status,
           retry_count = excluded.retry_count,
           error_message = excluded.error_message,
+          printer_name = COALESCE(excluded.printer_name, print_jobs.printer_name),
+          last_callback_result = COALESCE(excluded.last_callback_result, print_jobs.last_callback_result),
           payload_json = excluded.payload_json,
           updated_at = excluded.updated_at`
       )
@@ -424,7 +505,9 @@ export class SqlitePrintQueue {
         payloadJson,
         job.createdAt || now,
         now,
-        localReceivedAt
+        localReceivedAt,
+        job.printerName || null,
+        job.lastCallbackResult || null
       );
   }
 
@@ -485,7 +568,7 @@ export class SqlitePrintQueue {
   public clearCompletedJobs(): number {
     if (!this.db) return 0;
     const result = this.db
-      .prepare(`DELETE FROM print_jobs WHERE status IN ('PRINTED', 'SKIPPED')`)
+      .prepare(`DELETE FROM print_jobs WHERE status IN ('PRINTED', 'submitted_to_spooler', 'SUBMITTED_TO_SPOOLER', 'SKIPPED')`)
       .run();
     return result.changes;
   }
@@ -600,6 +683,8 @@ export class SqlitePrintQueue {
       retryCount: row.retry_count,
       maxRetries: row.max_retries,
       payload: payload as any,
+      printerName: row.printer_name || undefined,
+      lastCallbackResult: row.last_callback_result || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       localReceivedAt: row.local_received_at,

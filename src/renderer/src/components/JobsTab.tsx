@@ -156,15 +156,33 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
                       Station: {getStationDisplayLabel(job.station)}
                     </span>
+                    {(job.printerName || job.station) && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
+                        <Printer className="w-3 h-3 text-slate-400" />
+                        <span>Printer: {job.printerName || '80 Printer'}</span>
+                      </span>
+                    )}
                     <span className="text-xs text-slate-500">
                       Attempts: {job.retryCount || 0}
                     </span>
                   </div>
 
+                  {job.lastCallbackResult && !job.errorMessage && (
+                    <div className="p-2 rounded bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs flex items-center space-x-2">
+                      <CheckCircle className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                      <span>{job.lastCallbackResult}</span>
+                    </div>
+                  )}
+
                   {job.errorMessage && (
                     <div className="p-2 rounded bg-rose-950/40 border border-rose-800/40 text-rose-300 text-xs flex items-center space-x-2">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-                      <span>{job.errorMessage}</span>
+                      <div className="flex flex-col">
+                        <span>{job.errorMessage}</span>
+                        {job.lastCallbackResult && job.lastCallbackResult !== job.errorMessage && (
+                          <span className="text-[10px] text-rose-300/80 mt-0.5">Callback: {job.lastCallbackResult}</span>
+                        )}
+                      </div>
                     </div>
                   )}
 

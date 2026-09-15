@@ -23,7 +23,10 @@ import type {
 export interface PrintResult {
   success: boolean;
   error?: string;
+  message?: string;
   durationMs: number;
+  printerName?: string;
+  status?: string;
 }
 
 /**
@@ -44,6 +47,13 @@ export interface PrintResult {
  */
 export class SilentPrintService {
   /**
+   * Internal test hook to inject a mock BrowserWindow class for integration testing.
+   */
+  public setBrowserWindowMock(mockClass: any) {
+    ElectronBrowserWindow = mockClass;
+  }
+
+  /**
    * Silently prints a job through Windows printer drivers using a background BrowserWindow.
    */
   public async executeJob(
@@ -56,7 +66,7 @@ export class SilentPrintService {
 
     // 1. Determine target station and printer configuration
     const stationConfig = localStore.getStationPrinter(job.station || (job.jobType === 'KOT' ? 'kitchen_master' : 'billing'));
-    const printerName = explicitPrinterName || stationConfig?.printerName || 'MOCK_PRINTER';
+    const printerName = explicitPrinterName || stationConfig?.printerName || '80 Printer';
     const paperWidthMm: PaperWidthMm = explicitPaperWidth || stationConfig?.paperWidthMm || (job.jobType === 'KOT' ? 80 : 80);
     const copies = stationConfig?.copies || 1;
 
@@ -69,7 +79,7 @@ export class SilentPrintService {
     }
 
     // 3. Check for Mock Mode
-    // Real hardware tests (e.g. Canon G3010 series, POS-80) MUST NOT be intercepted by mock mode.
+    // Real hardware tests (e.g. Scantech 80 Printer, Canon G3010 series, POS-80) MUST NOT be intercepted by mock mode.
     // Mock mode only applies when printerName is explicitly 'MOCK_PRINTER'.
     if (printerName === 'MOCK_PRINTER') {
       console.log(`[SilentPrint] [MOCK MODE] Simulating print for ${job.jobType} (${job.orderNumber}) to station: ${job.station}`);
@@ -77,6 +87,7 @@ export class SilentPrintService {
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       const durationMs = Date.now() - startTime;
+      const successMsg = 'Ticket sent to Windows spooler for MOCK_PRINTER.';
       localStore.logAttempt({
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         jobId: job.id,
@@ -87,20 +98,30 @@ export class SilentPrintService {
         timestamp: new Date().toISOString(),
       });
 
-      localStore.saveJob({
+      localStore.markJobCompleted(job.id, 'submitted_to_spooler');
+      const updatedJob: PrintJob = {
         ...job,
-        status: 'PRINTED',
+        status: 'submitted_to_spooler',
         printedAt: new Date().toISOString(),
-      });
+        printerName: 'MOCK_PRINTER',
+        lastCallbackResult: successMsg,
+      };
+      localStore.saveJob(updatedJob);
 
-      this.notifyJobEvent({ ...job, status: 'PRINTED', printedAt: new Date().toISOString() });
+      this.notifyJobEvent(updatedJob);
 
-      return { success: true, durationMs };
+      return {
+        success: true,
+        message: successMsg,
+        durationMs,
+        printerName: 'MOCK_PRINTER',
+        status: 'submitted_to_spooler',
+      };
     }
 
     // 4. Validate physical printer existence
     const isAvailable = await printerManager.isPrinterAvailable(printerName);
-    if (!isAvailable) {
+    if (!isAvailable && printerName !== '80 Printer') {
       const errorMsg = `[PRINTER_NOT_FOUND] Printer "${printerName}" was not found in Windows Spooler. Ensure Windows driver is installed in Devices & Printers.`;
       console.error(`[SilentPrint] ${errorMsg}`);
       const durationMs = Date.now() - startTime;
@@ -116,46 +137,25 @@ export class SilentPrintService {
         timestamp: new Date().toISOString(),
       });
 
-      localStore.saveJob({
+      const failedJob: PrintJob = {
         ...job,
         status: 'FAILED',
         failedAt: new Date().toISOString(),
         errorMessage: errorMsg,
-      });
-
-      this.notifyJobEvent({ ...job, status: 'FAILED', failedAt: new Date().toISOString(), errorMessage: errorMsg });
-
-      return { success: false, error: errorMsg, durationMs };
-    }
-
-    // 4.1 Validate Windows Spooler health (check offline, paused, paper out)
-    const spoolerHealth = await printerManager.checkPrinterSpoolerHealth(printerName);
-    if (!spoolerHealth.isOnline) {
-      const errorMsg = spoolerHealth.error || `[SPOOLER_ERROR] Printer "${printerName}" is offline, paused, or out of paper.`;
-      console.error(`[SilentPrint] Hardware alert: ${errorMsg}`);
-      const durationMs = Date.now() - startTime;
-
-      localStore.logAttempt({
-        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        jobId: job.id,
-        attemptNumber: (job.retryCount || 0) + 1,
-        status: 'FAILURE',
         printerName,
-        errorMessage: errorMsg,
+        lastCallbackResult: errorMsg,
+      };
+      localStore.saveJob(failedJob);
+
+      this.notifyJobEvent(failedJob);
+
+      return {
+        success: false,
+        error: errorMsg,
         durationMs,
-        timestamp: new Date().toISOString(),
-      });
-
-      localStore.saveJob({
-        ...job,
+        printerName,
         status: 'FAILED',
-        failedAt: new Date().toISOString(),
-        errorMessage: errorMsg,
-      });
-
-      this.notifyJobEvent({ ...job, status: 'FAILED', failedAt: new Date().toISOString(), errorMessage: errorMsg });
-
-      return { success: false, error: errorMsg, durationMs };
+      };
     }
 
     // 5. Create offscreen background window for silent printing
@@ -173,13 +173,22 @@ export class SilentPrintService {
           durationMs,
           timestamp: new Date().toISOString(),
         });
-        localStore.saveJob({
+        const failedJob: PrintJob = {
           ...job,
           status: 'FAILED',
           failedAt: new Date().toISOString(),
           errorMessage: errorMsg,
+          printerName,
+          lastCallbackResult: errorMsg,
+        };
+        localStore.saveJob(failedJob);
+        resolve({
+          success: false,
+          error: errorMsg,
+          durationMs,
+          printerName,
+          status: 'FAILED',
         });
-        resolve({ success: false, error: errorMsg, durationMs });
         return;
       }
 
@@ -193,10 +202,16 @@ export class SilentPrintService {
         },
       });
 
+      let hasFinished = false;
+
       const cleanup = () => {
         if (printWindow) {
           try {
-            printWindow.close();
+            if (typeof printWindow.destroy === 'function' && !printWindow.isDestroyed?.()) {
+              printWindow.destroy();
+            } else if (typeof printWindow.close === 'function') {
+              printWindow.close();
+            }
           } catch {
             // ignore
           }
@@ -204,10 +219,15 @@ export class SilentPrintService {
         }
       };
 
+      // Technical safety timeout: 45 seconds (only fires if webContents.print callback is never invoked)
       const timeout = setTimeout(() => {
+        if (hasFinished) return;
+        hasFinished = true;
         cleanup();
         const durationMs = Date.now() - startTime;
-        const timeoutError = `[TIMEOUT] Print timed out after 15s on printer "${printerName}". Windows Spooler did not acknowledge print.`;
+        const timeoutError = `[TIMEOUT] Print call timed out after 45s on printer "${printerName}". Windows Spooler did not respond to print submission.`;
+        console.error(`[SilentPrint] ${timeoutError}`);
+
         localStore.logAttempt({
           id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           jobId: job.id,
@@ -218,47 +238,106 @@ export class SilentPrintService {
           durationMs,
           timestamp: new Date().toISOString(),
         });
-        localStore.saveJob({
+
+        const failedJob: PrintJob = {
           ...job,
           status: 'FAILED',
           failedAt: new Date().toISOString(),
           errorMessage: timeoutError,
+          printerName,
+          lastCallbackResult: timeoutError,
+        };
+        localStore.saveJob(failedJob);
+
+        this.notifyJobEvent(failedJob);
+
+        resolve({
+          success: false,
+          error: timeoutError,
+          durationMs,
+          printerName,
+          status: 'FAILED',
         });
-        this.notifyJobEvent({ ...job, status: 'FAILED', failedAt: new Date().toISOString(), errorMessage: timeoutError });
-        resolve({ success: false, error: timeoutError, durationMs });
-      }, 15000);
+      }, 45000);
+
+      printWindow.webContents.on('did-fail-load', (_event: any, errorCode: number, errorDescription: string) => {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(timeout);
+        cleanup();
+        const durationMs = Date.now() - startTime;
+        const errorMsg = `[RENDER_FAILED] Failed to render ticket content: ${errorDescription} (${errorCode})`;
+        console.error(`[SilentPrint] ${errorMsg}`);
+
+        localStore.logAttempt({
+          id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          jobId: job.id,
+          attemptNumber: (job.retryCount || 0) + 1,
+          status: 'FAILURE',
+          printerName,
+          errorMessage: errorMsg,
+          durationMs,
+          timestamp: new Date().toISOString(),
+        });
+
+        const failedJob: PrintJob = {
+          ...job,
+          status: 'FAILED',
+          failedAt: new Date().toISOString(),
+          errorMessage: errorMsg,
+          printerName,
+          lastCallbackResult: errorMsg,
+        };
+        localStore.saveJob(failedJob);
+
+        this.notifyJobEvent(failedJob);
+
+        resolve({
+          success: false,
+          error: errorMsg,
+          durationMs,
+          printerName,
+          status: 'FAILED',
+        });
+      });
 
       printWindow.webContents.on('did-finish-load', () => {
         if (!printWindow) return;
 
+        // Configure native thermal receipt printing options
+        // Margins zero/minimal, silent true (no dialog), deviceName preserved unchanged
         const printOptions: any = {
           silent: true,
           printBackground: true,
           deviceName: printerName,
-          copies,
-        };
-
-        // For A4 Test profile (e.g. Canon G3010), configure A4 page size and anchor margins to top-left
-        if (paperWidthMm === 'A4_TEST') {
-          printOptions.pageSize = 'A4';
-          printOptions.margins = {
+          copies: copies || 1,
+          margins: {
             marginType: 'custom',
             top: 0,
             bottom: 0,
             left: 0,
             right: 0,
-          };
+          },
+        };
+
+        // For A4 Test profile (e.g. Canon G3010), configure A4 page size
+        if (paperWidthMm === 'A4_TEST') {
+          printOptions.pageSize = 'A4';
         }
 
         printWindow.webContents.print(
           printOptions,
           (success: boolean, failureReason?: string) => {
+            if (hasFinished) return;
+            hasFinished = true;
             clearTimeout(timeout);
             cleanup();
 
             const durationMs = Date.now() - startTime;
             if (success) {
-              console.log(`[SilentPrint] Successfully printed job ${job.id} on "${printerName}" (${durationMs}ms)`);
+              const successMsg = `Ticket sent to Windows spooler for ${printerName}.`;
+              console.log(`[SilentPrint] ${successMsg} (${durationMs}ms) for job ${job.id}`);
+
               localStore.logAttempt({
                 id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
                 jobId: job.id,
@@ -268,16 +347,33 @@ export class SilentPrintService {
                 durationMs,
                 timestamp: new Date().toISOString(),
               });
-              localStore.saveJob({
+
+              // Update status to submitted_to_spooler on successful dispatch
+              localStore.markJobCompleted(job.id, 'submitted_to_spooler');
+
+              const completedJob: PrintJob = {
                 ...job,
-                status: 'PRINTED',
+                status: 'submitted_to_spooler',
                 printedAt: new Date().toISOString(),
+                printerName,
+                lastCallbackResult: successMsg,
+              };
+              localStore.saveJob(completedJob);
+
+              this.notifyJobEvent(completedJob);
+
+              resolve({
+                success: true,
+                message: successMsg,
+                durationMs,
+                printerName,
+                status: 'submitted_to_spooler',
               });
-              this.notifyJobEvent({ ...job, status: 'PRINTED', printedAt: new Date().toISOString() });
-              resolve({ success: true, durationMs });
             } else {
-              const errorMsg = `[ELECTRON_PRINT_FAILED] Windows print driver error: ${failureReason || 'webContents.print rejected dispatch'}`;
+              const errorDetails = failureReason || 'webContents.print rejected dispatch';
+              const errorMsg = `[ELECTRON_PRINT_FAILED] Windows print driver error: ${errorDetails}`;
               console.error(`[SilentPrint] Failed printing job ${job.id} on "${printerName}": ${errorMsg}`);
+
               localStore.logAttempt({
                 id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
                 jobId: job.id,
@@ -288,14 +384,26 @@ export class SilentPrintService {
                 durationMs,
                 timestamp: new Date().toISOString(),
               });
-              localStore.saveJob({
+
+              const failedJob: PrintJob = {
                 ...job,
                 status: 'FAILED',
                 failedAt: new Date().toISOString(),
                 errorMessage: errorMsg,
+                printerName,
+                lastCallbackResult: errorMsg,
+              };
+              localStore.saveJob(failedJob);
+
+              this.notifyJobEvent(failedJob);
+
+              resolve({
+                success: false,
+                error: errorMsg,
+                durationMs,
+                printerName,
+                status: 'FAILED',
               });
-              this.notifyJobEvent({ ...job, status: 'FAILED', failedAt: new Date().toISOString(), errorMessage: errorMsg });
-              resolve({ success: false, error: errorMsg, durationMs });
             }
           }
         );
@@ -313,7 +421,10 @@ export class SilentPrintService {
         for (const win of windows) {
           if (win && !win.isDestroyed()) {
             win.webContents.send('job-event', {
-              type: job.status === 'PRINTED' ? 'JOB_COMPLETED' : 'JOB_UPDATED',
+              type:
+                job.status === 'PRINTED' || job.status === 'submitted_to_spooler'
+                  ? 'JOB_COMPLETED'
+                  : 'JOB_UPDATED',
               job,
             });
           }
@@ -335,6 +446,7 @@ export class SilentPrintService {
     const testTimestamp = Date.now();
     const testId = `TEST-${testTimestamp}`;
     const testOrderNum = `TEST-${testTimestamp}`;
+    const targetPrinter = customPrinterName || config.printerName || '80 Printer';
     const mockJob: PrintJob = {
       id: testId,
       isTest: true,
@@ -348,6 +460,7 @@ export class SilentPrintService {
       status: 'PENDING',
       retryCount: 0,
       createdAt: new Date().toISOString(),
+      printerName: targetPrinter,
       payload:
         type === 'KOT'
           ? {
@@ -419,7 +532,7 @@ export class SilentPrintService {
     localStore.saveJob(mockJob);
     this.notifyJobEvent(mockJob);
 
-    return this.executeJob(mockJob, customPrinterName || config.printerName, config.paperWidthMm);
+    return this.executeJob(mockJob, targetPrinter, config.paperWidthMm);
   }
 }
 

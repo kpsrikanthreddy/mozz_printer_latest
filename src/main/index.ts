@@ -438,7 +438,7 @@ function setupIpcHandlers() {
     return { success: true };
   });
 
-  ipcMain.handle(
+    ipcMain.handle(
     'test-print',
     async (
       _event: any,
@@ -449,14 +449,16 @@ function setupIpcHandlers() {
         customPrinterName?: string;
       }
     ) => {
+      const stationConfig = localStore.getStationPrinter(payload.station);
+      const targetPrinterName = payload.customPrinterName || stationConfig?.printerName || '80 Printer';
       const config: PrinterConfig = {
         station: payload.station,
-        printerName: payload.customPrinterName || 'MOCK_PRINTER',
-        paperWidthMm: payload.paperWidthMm,
+        printerName: targetPrinterName,
+        paperWidthMm: payload.paperWidthMm || stationConfig?.paperWidthMm || 80,
         copies: 1,
         isAutoPrint: true,
       };
-      return silentPrintService.executeTestPrint(payload.type, config, payload.customPrinterName);
+      return silentPrintService.executeTestPrint(payload.type, config, targetPrinterName);
     }
   );
 

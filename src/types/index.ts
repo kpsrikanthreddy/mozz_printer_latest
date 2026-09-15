@@ -4,6 +4,8 @@ export type PrintJobStatus =
   | 'PENDING'
   | 'CLAIMED'
   | 'PRINTING'
+  | 'submitted_to_spooler'
+  | 'SUBMITTED_TO_SPOOLER'
   | 'PRINTED'
   | 'FAILED'
   | 'UNCERTAIN_RECOVERY'
@@ -108,6 +110,8 @@ export interface PrintJob {
   station: string;
   status: PrintJobStatus;
   payload: KotTicketPayload | BillTicketPayload;
+  printerName?: string;
+  lastCallbackResult?: string;
   errorMessage?: string;
   retryCount: number;
   maxRetries?: number;

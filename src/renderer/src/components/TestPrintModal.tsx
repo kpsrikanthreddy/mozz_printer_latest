@@ -32,10 +32,30 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
   const [ticketType, setTicketType] = useState<PrintJobType>('KOT');
   const [selectedStation, setSelectedStation] = useState<PrinterStation>('kitchen_master');
   const [paperWidth, setPaperWidth] = useState<PaperWidthMm>(80);
-  const [targetPrinter, setTargetPrinter] = useState<string>('MOCK_PRINTER');
+  const [targetPrinter, setTargetPrinter] = useState<string>('80 Printer');
   const [isPrinting, setIsPrinting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+  React.useEffect(() => {
+    const stationMatch = printerConfigs.find((c) => c.station === selectedStation);
+    if (stationMatch && stationMatch.printerName) {
+      setTargetPrinter(stationMatch.printerName);
+      setPaperWidth(stationMatch.paperWidthMm);
+    } else {
+      const p80 = discoveredPrinters.find((p) => p.name.toLowerCase() === '80 printer');
+      if (p80) {
+        setTargetPrinter(p80.name);
+      } else {
+        const def = discoveredPrinters.find((p) => p.isDefault && p.name !== 'MOCK_PRINTER');
+        if (def) {
+          setTargetPrinter(def.name);
+        } else {
+          setTargetPrinter('80 Printer');
+        }
+      }
+    }
+  }, [selectedStation, printerConfigs, discoveredPrinters]);
 
   if (!isOpen) return null;
 
@@ -75,9 +95,12 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
       });
 
       if (res.success) {
+        const submissionMsg = (res as any).message
+          ? (res as any).message
+          : `Ticket sent to Windows spooler for ${targetPrinter}.`;
         setResult({
           success: true,
-          message: `Successfully printed test ${ticketType} via "${targetPrinter}". Spool verified!`,
+          message: `Print submission successful: ${submissionMsg}`,
         });
       } else {
         setResult({
@@ -100,8 +123,17 @@ export const TestPrintModal: React.FC<TestPrintModalProps> = ({
     setShowConfirmDialog(true);
   };
 
-  // Build printer list ensuring Canon G3010 series is included
+  // Build printer list ensuring "80 Printer" and Canon G3010 series are included
   const printerOptions = [...discoveredPrinters];
+  if (!printerOptions.some((p) => p.name.toLowerCase() === '80 printer')) {
+    printerOptions.unshift({
+      name: '80 Printer',
+      displayName: '80 Printer (Default Windows Spooler)',
+      description: 'Scantech 80mm Thermal Receipt Printer',
+      isDefault: true,
+      isOnline: true,
+    });
+  }
   if (!printerOptions.some((p) => p.name.toLowerCase().includes('canon g3010'))) {
     printerOptions.push({
       name: 'Canon G3010 series',

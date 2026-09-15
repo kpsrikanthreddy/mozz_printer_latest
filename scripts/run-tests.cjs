@@ -7,7 +7,8 @@ const testFiles = [
   'dist/test/stage3Requirements.test.js',
   'dist/test/agentPrint.test.js',
   'dist/test/diagnostics.test.js',
-  'dist/test/orderNumberAndStation.test.js'
+  'dist/test/orderNumberAndStation.test.js',
+  'dist/test/windowsPrint80.test.js'
 ];
 
 let electronPath = null;

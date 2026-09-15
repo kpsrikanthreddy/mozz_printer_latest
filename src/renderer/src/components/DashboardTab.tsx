@@ -211,7 +211,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <div className="flex items-center space-x-2">
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                        job.status === 'PRINTED'
+                        job.status === 'PRINTED' || job.status === 'submitted_to_spooler'
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                           : job.status === 'FAILED'
                           ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
@@ -222,7 +222,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                           : 'bg-slate-800 text-slate-300 border-slate-700'
                       }`}
                     >
-                      {job.status}
+                      {job.status === 'submitted_to_spooler' ? 'SPOOLED' : job.status}
                     </span>
 
                     {job.status === 'FAILED' && (
@@ -246,7 +246,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </button>
                     )}
 
-                    {(job.status === 'PRINTED' || job.status === 'FAILED' || job.status === 'CANCELLED') && onDeleteJob && (
+                    {(job.status === 'PRINTED' || job.status === 'submitted_to_spooler' || job.status === 'FAILED' || job.status === 'CANCELLED') && onDeleteJob && (
                       <button
                         onClick={() => onDeleteJob(job)}
                         className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800/40 transition-colors"
