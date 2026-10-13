@@ -204,15 +204,15 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
     .map((item) => {
       const addonsText = item.addons && item.addons.length > 0 ? `+ ${item.addons.join(', ')}` : '';
       return `
-        <div style="margin-bottom: 3px;">
-          <div style="display: flex; justify-content: space-between;">
-            <span style="flex: 1; word-break: break-word; font-weight: 500;">${item.name}</span>
+        <div style="margin-bottom: 3px; color: #000000 !important;">
+          <div style="display: flex; justify-content: space-between; color: #000000 !important;">
+            <span style="flex: 1; word-break: break-word; font-weight: 500; color: #000000 !important;">${item.name}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; font-size: ${is58 ? '10px' : '11px'}; color: #222;">
-            <span>${item.quantity} x ₹${Number(item.unitPrice).toFixed(2)}</span>
-            <span style="font-weight: bold;">₹${Number(item.itemTotal).toFixed(2)}</span>
+          <div style="display: flex; justify-content: space-between; font-size: ${is58 ? '10px' : '11px'}; color: #000000 !important;">
+            <span style="color: #000000 !important;">${item.quantity} x ₹${Number(item.unitPrice).toFixed(2)}</span>
+            <span style="font-weight: bold; color: #000000 !important;">₹${Number(item.itemTotal).toFixed(2)}</span>
           </div>
-          ${addonsText ? `<div style="font-size: ${is58 ? '9px' : '10px'}; color: #444;">${addonsText}</div>` : ''}
+          ${addonsText ? `<div style="font-size: ${is58 ? '9px' : '10px'}; color: #000000 !important;">${addonsText}</div>` : ''}
         </div>
       `;
     })
@@ -229,37 +229,45 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
             margin: ${isA4Test ? '5mm' : '0'};
             size: ${isA4Test ? 'A4 portrait' : is58 ? '58mm auto' : '80mm auto'};
           }
+          * {
+            color: #000000 !important;
+            opacity: 1 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
           body {
             margin: 0;
             padding: ${isA4Test ? '6px 10px' : '2px 4px'};
             font-family: 'Courier New', Courier, monospace, system-ui;
             font-size: ${fontSize};
             line-height: 1.25;
-            color: #000;
+            color: #000000 !important;
             background: #fff;
             width: ${widthPx};
             max-width: ${widthPx};
             box-sizing: border-box;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            opacity: 1 !important;
             page-break-inside: avoid;
-            ${isA4Test ? 'border-right: 1px dashed #777; border-bottom: 1px dashed #777; padding-bottom: 16px;' : ''}
+            ${isA4Test ? 'border-right: 1px dashed #000000; border-bottom: 1px dashed #000000; padding-bottom: 16px;' : ''}
           }
-          .center { text-align: center; }
-          .bold { font-weight: bold; }
-          .row { display: flex; justify-content: space-between; }
-          .divider { border-bottom: 1px dashed #000; margin: 4px 0; }
-          .double-divider { border-bottom: 2px solid #000; margin: 6px 0; }
+          .center { text-align: center; color: #000000 !important; }
+          .bold { font-weight: bold; color: #000000 !important; }
+          .row { display: flex; justify-content: space-between; color: #000000 !important; }
+          .divider { border-bottom: 1px dashed #000000; margin: 4px 0; }
+          .double-divider { border-bottom: 2px solid #000000; margin: 6px 0; }
           .reprint-banner {
-            border: 2px solid #000;
+            border: 2px solid #000000;
             padding: 3px;
             text-align: center;
             font-weight: bold;
             font-size: ${is58 ? '12px' : '14px'};
             margin-bottom: 4px;
+            color: #000000 !important;
           }
           .a4-test-banner {
-            border: 1px dashed #555;
+            border: 1px dashed #000000;
             background: #f3f4f6;
             padding: 4px;
             text-align: center;
@@ -267,9 +275,10 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
             font-size: 10px;
             margin-bottom: 6px;
             letter-spacing: 0.5px;
+            color: #000000 !important;
           }
           .test-print-banner {
-            border: 2px solid #000;
+            border: 2px solid #000000;
             padding: 4px;
             text-align: center;
             font-weight: bold;
@@ -277,6 +286,7 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
             margin-bottom: 6px;
             letter-spacing: 0.5px;
             background: #fff;
+            color: #000000 !important;
           }
         </style>
       </head>
@@ -289,35 +299,35 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
         }
         ${payload.isReprint ? '<div class="reprint-banner">*** DUPLICATE BILL ***</div>' : ''}
 
-        <div class="center bold" style="font-size: ${headerFontSize};">
+        <div class="center bold" style="font-size: ${headerFontSize}; color: #000000 !important;">
           ${payload.restaurantName || 'STARTERS4U'}
         </div>
-        <div class="center" style="font-size: ${is58 ? '10px' : '11px'};">
+        <div class="center" style="font-size: ${is58 ? '10px' : '11px'}; color: #000000 !important;">
           ${payload.branchName || 'Main Branch'}
         </div>
-        ${payload.branchAddress ? `<div class="center" style="font-size: ${is58 ? '9px' : '10px'}; color: #333;">${payload.branchAddress}</div>` : ''}
-        ${payload.branchPhone ? `<div class="center" style="font-size: ${is58 ? '9px' : '10px'};">Phone: ${payload.branchPhone}</div>` : ''}
-        ${payload.gstin ? `<div class="center bold" style="font-size: ${is58 ? '9px' : '10px'}; margin-top: 2px;">GSTIN: ${payload.gstin}</div>` : ''}
+        ${payload.branchAddress ? `<div class="center" style="font-size: ${is58 ? '9px' : '10px'}; color: #000000 !important;">${payload.branchAddress}</div>` : ''}
+        ${payload.branchPhone ? `<div class="center" style="font-size: ${is58 ? '9px' : '10px'}; color: #000000 !important;">Phone: ${payload.branchPhone}</div>` : ''}
+        ${payload.gstin ? `<div class="center bold" style="font-size: ${is58 ? '9px' : '10px'}; margin-top: 2px; color: #000000 !important;">GSTIN: ${payload.gstin}</div>` : ''}
 
         <div class="double-divider"></div>
 
-        <div class="row bold">
+        <div class="row bold" style="color: #000000 !important;">
           <span>${payload.billNumber}</span>
           <span>${formatDisplayOrderNumber(payload.orderNumber)}</span>
         </div>
-        <div class="row" style="font-size: ${is58 ? '9px' : '10px'}; color: #333;">
+        <div class="row" style="font-size: ${is58 ? '9px' : '10px'}; color: #000000 !important;">
           <span>${formattedDate}</span>
           <span>${formattedTime}</span>
         </div>
-        <div class="row" style="font-size: ${is58 ? '10px' : '11px'};">
+        <div class="row" style="font-size: ${is58 ? '10px' : '11px'}; color: #000000 !important;">
           <span>Type: ${payload.orderType?.toUpperCase()}</span>
-          ${payload.tableNumber ? `<span class="bold">Table: ${payload.tableNumber}</span>` : ''}
+          ${payload.tableNumber ? `<span class="bold" style="color: #000000 !important;">Table: ${payload.tableNumber}</span>` : ''}
         </div>
 
         ${
           payload.customerName
             ? `
-          <div style="font-size: ${is58 ? '9px' : '10px'}; margin-top: 2px;">
+          <div style="font-size: ${is58 ? '9px' : '10px'}; margin-top: 2px; color: #000000 !important;">
             Cust: ${payload.customerName} ${payload.customerPhone ? `(${payload.customerPhone})` : ''}
           </div>
         `
@@ -326,26 +336,26 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
 
         <div class="divider"></div>
 
-        <div class="row bold" style="border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 4px;">
-          <span>Item</span>
-          <span>Amount</span>
+        <div class="row bold" style="border-bottom: 1px solid #000000; padding-bottom: 2px; margin-bottom: 4px; color: #000000 !important;">
+          <span style="color: #000000 !important;">Item</span>
+          <span style="color: #000000 !important;">Amount</span>
         </div>
 
         ${itemsHtml}
 
         <div class="divider"></div>
 
-        <div class="row">
-          <span>Subtotal:</span>
-          <span>₹${Number(payload.itemTotal).toFixed(2)}</span>
+        <div class="row" style="color: #000000 !important;">
+          <span style="color: #000000 !important;">Subtotal:</span>
+          <span style="color: #000000 !important;">₹${Number(payload.itemTotal).toFixed(2)}</span>
         </div>
 
         ${
           payload.discount > 0
             ? `
-          <div class="row" style="color: #222;">
-            <span>Discount:</span>
-            <span>- ₹${Number(payload.discount).toFixed(2)}</span>
+          <div class="row" style="color: #000000 !important;">
+            <span style="color: #000000 !important;">Discount:</span>
+            <span style="color: #000000 !important;">- ₹${Number(payload.discount).toFixed(2)}</span>
           </div>
         `
             : ''
@@ -354,9 +364,9 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
         ${
           payload.tax > 0
             ? `
-          <div class="row">
-            <span>GST / Taxes${payload.taxRate ? ` (${payload.taxRate}%)` : ''}:</span>
-            <span>₹${Number(payload.tax).toFixed(2)}</span>
+          <div class="row" style="color: #000000 !important;">
+            <span style="color: #000000 !important;">GST / Taxes${payload.taxRate ? ` (${payload.taxRate}%)` : ''}:</span>
+            <span style="color: #000000 !important;">₹${Number(payload.tax).toFixed(2)}</span>
           </div>
         `
             : ''
@@ -365,9 +375,9 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
         ${
           payload.deliveryFee > 0
             ? `
-          <div class="row">
-            <span>Delivery Fee:</span>
-            <span>₹${Number(payload.deliveryFee).toFixed(2)}</span>
+          <div class="row" style="color: #000000 !important;">
+            <span style="color: #000000 !important;">Delivery Fee:</span>
+            <span style="color: #000000 !important;">₹${Number(payload.deliveryFee).toFixed(2)}</span>
           </div>
         `
             : ''
@@ -375,26 +385,26 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
 
         <div class="double-divider"></div>
 
-        <div class="row bold" style="font-size: ${totalFontSize};">
-          <span>GRAND TOTAL:</span>
-          <span>₹${Number(payload.grandTotal).toFixed(2)}</span>
+        <div class="row bold" style="font-size: ${totalFontSize}; color: #000000 !important;">
+          <span style="color: #000000 !important;">GRAND TOTAL:</span>
+          <span style="color: #000000 !important;">₹${Number(payload.grandTotal).toFixed(2)}</span>
         </div>
 
         <div class="double-divider"></div>
 
-        <div class="row" style="font-size: ${is58 ? '10px' : '11px'};">
-          <span>Payment:</span>
-          <span class="bold">${payload.paymentMethod?.toUpperCase()} (${payload.paymentStatus?.toUpperCase()})</span>
+        <div class="row" style="font-size: ${is58 ? '10px' : '11px'}; color: #000000 !important;">
+          <span style="color: #000000 !important;">Payment:</span>
+          <span class="bold" style="color: #000000 !important;">${payload.paymentMethod?.toUpperCase()} (${payload.paymentStatus?.toUpperCase()})</span>
         </div>
 
         <div class="divider"></div>
 
-        <div class="center" style="font-size: ${is58 ? '9px' : '10px'}; margin-top: 8px;">
+        <div class="center" style="font-size: ${is58 ? '9px' : '10px'}; margin-top: 8px; color: #000000 !important;">
           Thank you for choosing Starters4U!<br>
           Please visit again!
         </div>
 
-        ${isA4Test ? '<div class="center" style="font-size: 9px; color: #555; margin-top: 10px;">✂ CUT ALONG DASHED LINE FOR RECEIPT ✂</div>' : ''}
+        ${isA4Test ? '<div class="center" style="font-size: 9px; color: #000000 !important; margin-top: 10px;">✂ CUT ALONG DASHED LINE FOR RECEIPT ✂</div>' : ''}
 
         <div style="height: 30px;"></div>
       </body>

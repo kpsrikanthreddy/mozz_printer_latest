@@ -268,9 +268,28 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4 shadow-sm">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">Agent Status</h4>
-              <div className="flex items-center space-x-1.5 text-xs text-slate-400">
-                <Radio className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="capitalize">{status.replace('_', ' ')}</span>
+              <div className="flex items-center space-x-1.5 text-xs">
+                {status === 'connected_sse' || status === 'connected_polling' ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="font-semibold text-emerald-400">
+                      ONLINE ({status === 'connected_sse' ? 'SSE' : 'POLLING'})
+                    </span>
+                  </>
+                ) : status === 'unauthorized' ? (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-rose-400"></span>
+                    <span className="font-semibold text-rose-400">UNLINKED</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-rose-400 animate-pulse"></span>
+                    <span className="font-semibold text-rose-400">OFFLINE</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -285,8 +304,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <span className="text-slate-400">Device ID</span>
                 <span className="text-slate-200 font-mono">{settings.deviceId || 'pos-term-01'}</span>
               </div>
+              {(settings.restaurantName || settings.restaurantId) && (
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400">Outlet</span>
+                  <span className="text-slate-200 font-medium truncate max-w-[170px]" title={settings.branchName}>
+                    {settings.restaurantName || settings.restaurantId}
+                    {settings.branchName ? ` (${settings.branchName})` : ''}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between py-1 border-b border-slate-800">
-                <span className="text-slate-400">Heartbeat</span>
+                <span className="text-slate-400">Heartbeat (30s)</span>
                 <span className="text-slate-200">
                   {settings.lastHeartbeatAt
                     ? new Date(settings.lastHeartbeatAt).toLocaleTimeString()
@@ -304,6 +332,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </span>
               </div>
             </div>
+
+            {settings.lastHeartbeatError && (
+              <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-800/40 text-rose-300 text-[11px] space-y-1">
+                <div className="flex items-center space-x-1.5 font-semibold text-rose-400">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Connection Diagnostic:</span>
+                </div>
+                <p className="font-mono text-[10px] break-words text-rose-200">
+                  {settings.lastHeartbeatError}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Configured Station Printers */}

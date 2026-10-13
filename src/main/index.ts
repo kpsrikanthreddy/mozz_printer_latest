@@ -360,7 +360,13 @@ function setupIpcHandlers() {
       }
     ) => {
       try {
-        const cleanUrl = payload.apiUrl.replace(/\/$/, '');
+        let cleanUrl = (payload.apiUrl || '').trim().replace(/\/+$/, '');
+        if (!cleanUrl) cleanUrl = 'https://starters4u.ai.studio';
+        if (cleanUrl.endsWith('/admin')) cleanUrl = cleanUrl.slice(0, -6);
+        if (cleanUrl.includes('admin.starters4u.in')) {
+          cleanUrl = cleanUrl.replace('admin.starters4u.in', 'www.starters4u.in');
+        }
+
         const currentSettings = localStore.getSettings();
         const deviceId = payload.deviceId || currentSettings.deviceId || `win_pos_${Math.random().toString(36).substring(2, 10)}`;
         const deviceName = payload.deviceName || currentSettings.deviceName || 'Windows POS Terminal';
@@ -369,7 +375,7 @@ function setupIpcHandlers() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            pairingCode: payload.pairingCode,
+            pairingCode: payload.pairingCode.trim(),
             deviceId,
             deviceName,
             platform: 'win32',
@@ -379,37 +385,48 @@ function setupIpcHandlers() {
 
         if (!res.ok) {
           const errBody = (await res.json().catch(() => ({}))) as any;
-          return { success: false, error: errBody?.error || `Pairing failed with status ${res.status}` };
+          return { success: false, error: errBody?.error || errBody?.message || `Pairing failed with status ${res.status}` };
         }
 
         const data = (await res.json()) as any;
-        const plainToken = data.deviceToken;
+        const plainToken = data.deviceToken || data.token;
 
         if (!plainToken) {
           return { success: false, error: 'Server did not issue a device token' };
         }
 
+        const restaurantId = data.restaurant?.id || data.restaurantId || '';
+        const restaurantName = data.restaurant?.name || data.restaurantName || 'Starters4U';
+        const branchId = data.branch?.id || data.branchId || '';
+        const branchName = data.branch?.name || data.branchName || 'Main Branch';
+
         // Store device token securely in local safeStorage (never returned to renderer)
         localStore.setDeviceToken(plainToken);
-        localStore.saveSettings({
+        const updatedSettings = localStore.saveSettings({
           apiUrl: cleanUrl,
-          restaurantId: data.restaurant?.id || '',
-          restaurantName: data.restaurant?.name || '',
-          branchId: data.branch?.id || '',
-          branchName: data.branch?.name || '',
+          restaurantId,
+          restaurantName,
+          branchId,
+          branchName,
           deviceId,
           deviceName,
           isRegistered: true,
+          lastHeartbeatAt: new Date().toISOString(),
+          lastHeartbeatStatus: 'online',
+          lastHeartbeatError: undefined,
         });
 
-        // Start SSE stream
-        agentClient.connect();
+        // Immediately send the first heartbeat using the newly redeemed credentials
+        await agentClient.sendHeartbeatNow(plainToken, updatedSettings);
+
+        // Start SSE stream and background workers
+        agentClient.start();
 
         return {
           success: true,
           deviceName,
-          restaurantName: data.restaurant?.name,
-          branchName: data.branch?.name,
+          restaurantName,
+          branchName,
         };
       } catch (err: any) {
         return { success: false, error: err.message || 'Connection error during device pairing' };

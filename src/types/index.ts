@@ -160,6 +160,8 @@ export interface AppSettings {
   hasToken?: boolean;
   maskedToken?: string;
   lastHeartbeatAt?: string;
+  lastHeartbeatStatus?: string;
+  lastHeartbeatError?: string;
 }
 
 export interface AgentMetrics {
@@ -187,7 +189,13 @@ export interface MozzPrinterAPI {
     pairingCode: string;
     deviceId?: string;
     deviceName?: string;
-  }) => Promise<{ success: boolean; deviceName?: string; error?: string }>;
+  }) => Promise<{
+    success: boolean;
+    deviceName?: string;
+    restaurantName?: string;
+    branchName?: string;
+    error?: string;
+  }>;
   registerDevice: (payload: {
     apiUrl: string;
     restaurantId: string;

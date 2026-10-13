@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Server, Laptop, AlertCircle, KeyRound, Sparkles, Sliders } from 'lucide-react';
+import { X, ShieldCheck, Server, Laptop, AlertCircle, Sparkles, Sliders, ExternalLink } from 'lucide-react';
 import type { AppSettings } from '@/types/index.js';
+import { normalizeApiUrl } from '../browserApi.js';
 
 interface DeviceAuthModalProps {
   isOpen: boolean;
@@ -31,14 +32,14 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
 
   // Code form
   const [codeForm, setCodeForm] = useState({
-    apiUrl: settings.apiUrl || 'https://www.starters4u.in',
+    apiUrl: settings.apiUrl || 'https://starters4u.ai.studio',
     pairingCode: '',
     deviceName: settings.deviceName || 'Windows POS Terminal 01',
   });
 
   // Manual form
   const [manualForm, setManualForm] = useState({
-    apiUrl: settings.apiUrl || 'https://www.starters4u.in',
+    apiUrl: settings.apiUrl || 'https://starters4u.ai.studio',
     restaurantId: settings.restaurantId || 'starters4u_main',
     branchId: settings.branchId || 'branch_madhapur',
     deviceId: settings.deviceId || `win-pos-${Math.random().toString(36).substring(2, 7)}`,
@@ -56,10 +57,6 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
 
   const handlePairSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isBrowserPreview) {
-      setErrorMsg('Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.');
-      return;
-    }
     if (codeForm.pairingCode.trim().length !== 6) {
       setErrorMsg('Please enter a valid 6-digit registration code.');
       return;
@@ -69,8 +66,9 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
     setErrorMsg(null);
 
     try {
+      const cleanUrl = normalizeApiUrl(codeForm.apiUrl);
       const res = await onPairWithCode({
-        apiUrl: codeForm.apiUrl.trim(),
+        apiUrl: cleanUrl,
         pairingCode: codeForm.pairingCode.trim(),
         deviceName: codeForm.deviceName.trim(),
       });
@@ -88,15 +86,15 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isBrowserPreview) {
-      setErrorMsg('Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.');
-      return;
-    }
     setIsLoading(true);
     setErrorMsg(null);
 
     try {
-      const res = await onRegister(manualForm);
+      const cleanUrl = normalizeApiUrl(manualForm.apiUrl);
+      const res = await onRegister({
+        ...manualForm,
+        apiUrl: cleanUrl,
+      });
       if (res.success) {
         onClose();
       } else {
@@ -119,56 +117,55 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Pair Terminal with Starters4U</h3>
-              <p className="text-[11px] text-slate-400">Authenticate this physical Windows POS station</p>
+              <h2 className="text-sm font-bold text-white">Link POS Terminal Device</h2>
+              <p className="text-xs text-slate-400">
+                Authenticate with Starters4U Kitchen &amp; Billing Cloud
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-slate-800 bg-slate-950/50 p-1 gap-1">
+        <div className="flex border-b border-slate-800 bg-slate-950/40">
           <button
             type="button"
-            onClick={() => {
-              setActiveTab('code');
-              setErrorMsg(null);
-            }}
-            className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg flex items-center justify-center space-x-2 transition-all ${
+            onClick={() => setActiveTab('code')}
+            className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center space-x-2 border-b-2 transition-all ${
               activeTab === 'code'
-                ? 'bg-orange-500 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'border-orange-500 text-orange-400 bg-orange-500/5'
+                : 'border-transparent text-slate-400 hover:text-slate-300'
             }`}
           >
-            <KeyRound className="w-3.5 h-3.5" />
+            <Sparkles className="w-3.5 h-3.5" />
             <span>6-Digit Pairing Code (Recommended)</span>
           </button>
           <button
             type="button"
-            onClick={() => {
-              setActiveTab('manual');
-              setErrorMsg(null);
-            }}
-            className={`py-2 px-3 text-xs font-semibold rounded-lg flex items-center justify-center space-x-2 transition-all ${
+            onClick={() => setActiveTab('manual')}
+            className={`flex-1 py-3 text-xs font-semibold flex items-center justify-center space-x-2 border-b-2 transition-all ${
               activeTab === 'manual'
-                ? 'bg-slate-800 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'border-orange-500 text-orange-400 bg-orange-500/5'
+                : 'border-transparent text-slate-400 hover:text-slate-300'
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Manual Setup</span>
+            <span>Manual Credentials</span>
           </button>
         </div>
 
         {isBrowserPreview && (
-          <div className="mx-6 mt-4 p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-amber-300 text-xs flex items-start space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-            <span>Preview mode — pairing is disabled. Available only in the installed Windows Print Agent.</span>
+          <div className="mx-6 mt-4 p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-emerald-300 text-xs flex items-start space-x-2">
+            <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+            <div>
+              <span className="font-semibold text-emerald-200">AI Studio Web Testing Enabled:</span>{' '}
+              Pair with <code className="text-emerald-300 font-mono">https://starters4u.ai.studio</code> to send live heartbeats and receive order print syncs.
+            </div>
           </div>
         )}
 
@@ -186,8 +183,16 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
               <label className="block text-xs font-bold text-slate-300 mb-1">
                 Enter 6-Digit Registration Code
               </label>
-              <p className="text-[11px] text-slate-400 mb-3">
-                Log into Starters4U Admin Dashboard &gt; POS Settings &gt; Generate Pairing Code (10 min TTL)
+              <p className="text-[11px] text-slate-400 mb-3 flex items-center justify-center gap-1.5 flex-wrap">
+                <span>Generate code in</span>
+                <a
+                  href="https://starters4u.ai.studio/admin"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-orange-400 hover:underline font-mono inline-flex items-center gap-0.5"
+                >
+                  https://starters4u.ai.studio/admin <ExternalLink className="w-3 h-3 inline" />
+                </a>
               </p>
               <input
                 type="text"
@@ -215,7 +220,7 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="e.g., Billing Counter Counter 1 or Kitchen Master"
+                  placeholder="e.g., Billing Counter 1 or Kitchen Master"
                   value={codeForm.deviceName}
                   onChange={(e) => setCodeForm({ ...codeForm, deviceName: e.target.value })}
                   className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-orange-500"
@@ -224,9 +229,32 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Backend Server URL
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Backend Server URL
+                </label>
+                <div className="flex items-center space-x-2 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCodeForm((prev) => ({ ...prev, apiUrl: 'https://starters4u.ai.studio' }))
+                    }
+                    className="text-orange-400 hover:text-orange-300 underline font-mono"
+                  >
+                    Test Studio
+                  </button>
+                  <span className="text-slate-600">•</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCodeForm((prev) => ({ ...prev, apiUrl: 'https://www.starters4u.in' }))
+                    }
+                    className="text-slate-400 hover:text-slate-300 underline font-mono"
+                  >
+                    Production
+                  </button>
+                </div>
+              </div>
               <div className="relative">
                 <Server className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -237,6 +265,9 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
                   className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs font-mono focus:outline-none focus:border-orange-500"
                 />
               </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Testing endpoint: <code className="text-slate-400 font-mono">https://starters4u.ai.studio</code>. Never use admin.starters4u.in as agent API URL.
+              </p>
             </div>
 
             <div className="pt-2 flex justify-end space-x-3">
@@ -249,8 +280,7 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isBrowserPreview || isLoading || codeForm.pairingCode.length !== 6}
-                title={isBrowserPreview ? 'Available only in the installed Windows Print Agent.' : undefined}
+                disabled={isLoading || codeForm.pairingCode.length !== 6}
                 className="px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all shadow-lg shadow-orange-950 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5" />
@@ -262,9 +292,32 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
           /* MANUAL TAB */
           <form onSubmit={handleManualSubmit} className="p-6 space-y-4">
             <div>
-              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Backend Server URL
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Backend Server URL
+                </label>
+                <div className="flex items-center space-x-2 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setManualForm((prev) => ({ ...prev, apiUrl: 'https://starters4u.ai.studio' }))
+                    }
+                    className="text-orange-400 hover:text-orange-300 underline font-mono"
+                  >
+                    Test Studio
+                  </button>
+                  <span className="text-slate-600">•</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setManualForm((prev) => ({ ...prev, apiUrl: 'https://www.starters4u.in' }))
+                    }
+                    className="text-slate-400 hover:text-slate-300 underline font-mono"
+                  >
+                    Production
+                  </button>
+                </div>
+              </div>
               <div className="relative">
                 <Server className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -330,8 +383,7 @@ export const DeviceAuthModal: React.FC<DeviceAuthModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isBrowserPreview || isLoading}
-                title={isBrowserPreview ? 'Available only in the installed Windows Print Agent.' : undefined}
+                disabled={isLoading}
                 className="px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all shadow-lg shadow-orange-950 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Linking...' : 'Save & Link Terminal'}

@@ -438,7 +438,7 @@ export default function App() {
           <div className="flex items-center space-x-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="font-semibold text-amber-300">
-              Preview mode — printing, pairing, backend connection, SSE, and test actions are disabled.
+              AI Studio Web Preview Mode — Test device pairing, live heartbeat (30s), and print queue sync.
             </span>
             <span className="text-slate-400 hidden lg:inline text-[11px]">
               (Mozz Print Agent must be opened from the installed Windows application.)

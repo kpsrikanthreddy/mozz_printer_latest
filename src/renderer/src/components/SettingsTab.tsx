@@ -55,12 +55,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setUrlPingResult(null);
 
     try {
-      const cleanUrl = formData.apiUrl.replace(/\/$/, '');
-      const res = await fetch(`${cleanUrl}/api/health`, { method: 'GET' });
-      if (res.ok) {
-        setUrlPingResult({ ok: true, msg: 'Connected successfully to Starters4U backend.' });
-      } else {
+      let cleanUrl = formData.apiUrl.trim().replace(/\/+$/, '');
+      if (cleanUrl.endsWith('/admin')) cleanUrl = cleanUrl.slice(0, -6);
+      if (cleanUrl.includes('admin.starters4u.in')) {
+        cleanUrl = cleanUrl.replace('admin.starters4u.in', 'www.starters4u.in');
+      }
+
+      // Try health endpoint, fallback to heartbeat endpoint
+      let res = await fetch(`${cleanUrl}/api/health`, { method: 'GET' }).catch(() => null);
+      if (!res || res.status === 404) {
+        res = await fetch(`${cleanUrl}/api/print-agent/devices/heartbeat`, { method: 'GET' }).catch(() => null);
+      }
+      if (!res || res.status === 404) {
+        res = await fetch(`${cleanUrl}/api/print-agent/heartbeat`, { method: 'GET' }).catch(() => null);
+      }
+
+      if (res && (res.ok || res.status === 401 || res.status === 405 || res.status === 400)) {
+        setUrlPingResult({
+          ok: true,
+          msg: `Connected successfully to Starters4U backend (${cleanUrl}). Server is responding.`,
+        });
+      } else if (res) {
         setUrlPingResult({ ok: false, msg: `Server responded with HTTP status ${res.status}.` });
+      } else {
+        setUrlPingResult({ ok: false, msg: 'Unable to reach backend URL (network or CORS).' });
       }
     } catch (err: any) {
       setUrlPingResult({ ok: false, msg: err.message || 'Unable to reach backend URL.' });
@@ -95,8 +113,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="text-slate-500">Quick Fill:</span>
               <button
                 type="button"
-                onClick={() => setFormData((prev) => ({ ...prev, apiUrl: 'https://www.starters4u.in' }))}
+                onClick={() => setFormData((prev) => ({ ...prev, apiUrl: 'https://starters4u.ai.studio' }))}
                 className="text-orange-400 hover:text-orange-300 underline font-mono"
+              >
+                Test Studio (starters4u.ai.studio)
+              </button>
+              <span className="text-slate-600">•</span>
+              <button
+                type="button"
+                onClick={() => setFormData((prev) => ({ ...prev, apiUrl: 'https://www.starters4u.in' }))}
+                className="text-slate-400 hover:text-slate-300 underline font-mono"
               >
                 Production (starters4u.in)
               </button>

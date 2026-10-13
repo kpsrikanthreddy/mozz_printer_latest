@@ -27,37 +27,40 @@ export const Header: React.FC<HeaderProps> = ({
   isBrowserPreview,
 }) => {
   const getStatusBadge = () => {
-    if (isBrowserPreview) {
-      return (
-        <div
-          className="flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold"
-          title="Preview mode — printing, pairing, backend connection, SSE, and test actions are disabled."
-        >
-          <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-          <WifiOff className="w-3.5 h-3.5" />
-          <span>PREVIEW MODE</span>
-        </div>
-      );
-    }
-
     switch (status) {
       case 'connected_sse':
         return (
-          <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+          <div
+            className="flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold"
+            title={`Online & Heartbeat active to ${settings.apiUrl}`}
+          >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <Wifi className="w-3.5 h-3.5" />
-            <span>LIVE (SSE)</span>
+            <span>ONLINE (LIVE)</span>
+            {isBrowserPreview && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                PREVIEW
+              </span>
+            )}
           </div>
         );
       case 'connected_polling':
         return (
-          <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-semibold">
-            <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse"></span>
+          <div
+            className="flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold"
+            title={`Online & Polling active to ${settings.apiUrl}`}
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>ACTIVE (POLLING)</span>
+            <span>ONLINE (POLLING)</span>
+            {isBrowserPreview && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                PREVIEW
+              </span>
+            )}
           </div>
         );
       case 'reconnecting':
@@ -72,17 +75,26 @@ export const Header: React.FC<HeaderProps> = ({
         return (
           <button
             onClick={onOpenRegister}
-            className="flex items-center space-x-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold hover:bg-rose-500/20 transition-colors"
+            className="flex items-center space-x-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold hover:bg-rose-500/20 transition-colors cursor-pointer"
+            title="Device is unlinked. Click to enter 6-digit pairing code."
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>UNLINKED - REGISTER</span>
+            <span>UNLINKED - PAIR DEVICE</span>
           </button>
         );
       default:
         return (
-          <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-400 text-xs font-semibold">
+          <div
+            className="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-800 border border-rose-500/30 text-rose-400 text-xs font-semibold"
+            title={settings.lastHeartbeatError || 'Disconnected from backend server'}
+          >
             <WifiOff className="w-3.5 h-3.5" />
             <span>OFFLINE</span>
+            {settings.lastHeartbeatError && (
+              <span className="max-w-[120px] truncate text-[10px] font-normal text-rose-300">
+                ({settings.lastHeartbeatError})
+              </span>
+            )}
           </div>
         );
     }

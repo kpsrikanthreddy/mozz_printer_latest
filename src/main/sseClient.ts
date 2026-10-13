@@ -7,6 +7,7 @@ import { resolveOrderNumber } from '../utils/orderUtils.js';
 import type {
   PrintJob,
   AgentConnectionStatus,
+  AppSettings,
 } from '../types/index.js';
 
 export type JobEventHandler = (event: {
@@ -335,6 +336,7 @@ export class SsePrintAgentClient {
           const res = await fetch(url, {
             headers: {
               Authorization: `Bearer ${token}`,
+              'x-device-token': token,
             },
           });
 
@@ -381,46 +383,133 @@ export class SsePrintAgentClient {
   }
 
   /**
-   * Periodic device heartbeat ping (every 25-30 seconds)
+   * Periodic device heartbeat ping (every 30 seconds)
    */
   private startHeartbeatLoop(): void {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
 
+    // Send first heartbeat immediately upon service start
+    this.sendHeartbeatNow().catch(() => {});
+
     this.heartbeatTimer = setInterval(async () => {
       if (!this.isRunning) return;
-      const settings = localStore.getSettings();
-      const token = localStore.getDeviceToken();
-      if (!settings.isRegistered || !token) return;
+      await this.sendHeartbeatNow();
+    }, 30000);
+  }
 
-      try {
-        const url = `${settings.apiUrl.replace(/\/$/, '')}/api/print-agent/devices/heartbeat`;
-        const res = await fetch(url, {
+  /**
+   * Immediately sends a heartbeat to the backend using current or explicit credentials.
+   * Calls POST /api/print-agent/devices/heartbeat with fallback to /api/print-agent/heartbeat.
+   */
+  public async sendHeartbeatNow(
+    explicitToken?: string,
+    explicitSettings?: AppSettings
+  ): Promise<{ ok: boolean; status?: string; error?: string }> {
+    const settings = explicitSettings || localStore.getSettings();
+    const token = explicitToken || localStore.getDeviceToken();
+
+    if (!settings.isRegistered || !token || !settings.apiUrl) {
+      return { ok: false, error: 'Device not registered or token missing' };
+    }
+
+    const cleanUrl = settings.apiUrl.replace(/\/+$/, '');
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'x-device-token': token,
+    };
+    const body = JSON.stringify({
+      deviceId: settings.deviceId,
+      restaurantId: settings.restaurantId,
+      branchId: settings.branchId,
+    });
+
+    try {
+      let endpoint = `${cleanUrl}/api/print-agent/devices/heartbeat`;
+      let res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body,
+      });
+
+      if (res.status === 404) {
+        endpoint = `${cleanUrl}/api/print-agent/heartbeat`;
+        res = await fetch(endpoint, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers,
+          body,
         });
-
-        if (res.ok) {
-          localStore.saveSettings({ lastHeartbeatAt: new Date().toISOString() });
-          this.isComputerOffline = false;
-        } else if (res.status === 401 || res.status === 403) {
-          this.setStatus('unauthorized');
-        }
-      } catch {
-        // network issue
       }
-    }, 25000);
+
+      if (res.ok) {
+        localStore.saveSettings({
+          lastHeartbeatAt: new Date().toISOString(),
+          lastHeartbeatStatus: 'online',
+          lastHeartbeatError: undefined,
+        });
+        this.isComputerOffline = false;
+        if (this.connectionStatus === 'disconnected' || this.connectionStatus === 'unauthorized') {
+          this.setStatus('connected_sse');
+        }
+        return { ok: true, status: 'online' };
+      } else {
+        let errMessage = `HTTP ${res.status}: ${res.statusText}`;
+        try {
+          const errJson: any = await res.json();
+          if (errJson?.error || errJson?.message) {
+            errMessage = errJson.error || errJson.message;
+          }
+        } catch {
+          // ignore json parse error
+        }
+
+        if (res.status === 401 || res.status === 403) {
+          localStore.saveSettings({
+            lastHeartbeatStatus: 'unauthorized',
+            lastHeartbeatError: `401 Unauthorized: Invalid or revoked device token`,
+          });
+          this.setStatus('unauthorized');
+        } else {
+          localStore.saveSettings({
+            lastHeartbeatStatus: 'offline',
+            lastHeartbeatError: errMessage,
+          });
+          this.setStatus('disconnected');
+        }
+        return { ok: false, error: errMessage };
+      }
+    } catch (err: any) {
+      const errMessage = err?.message || 'Network unreachable';
+      localStore.saveSettings({
+        lastHeartbeatStatus: 'offline',
+        lastHeartbeatError: errMessage,
+      });
+      this.setStatus('disconnected');
+      return { ok: false, error: errMessage };
+    }
   }
 
   /**
    * Processes an incoming job with atomic claiming, idempotency checking,
-   * local persistence, and silent driver execution.
+   * tenant isolation, local persistence, and silent driver execution.
    */
   public async processIncomingJob(job: PrintJob, forceReprint = false): Promise<boolean> {
     const settings = localStore.getSettings();
     const token = localStore.getDeviceToken();
+
+    // Tenant Isolation Check
+    if (job.restaurantId && settings.restaurantId && job.restaurantId !== settings.restaurantId) {
+      console.warn(
+        `[AgentClient] Tenant isolation violation: job restaurantId ${job.restaurantId} does not match device restaurantId ${settings.restaurantId}. Skipping.`
+      );
+      return false;
+    }
+    if (job.branchId && settings.branchId && job.branchId !== settings.branchId) {
+      console.warn(
+        `[AgentClient] Tenant isolation violation: job branchId ${job.branchId} does not match device branchId ${settings.branchId}. Skipping.`
+      );
+      return false;
+    }
 
     const resolvedOrderNumber = resolveOrderNumber(job);
     const isTestJob = Boolean(
@@ -459,8 +548,10 @@ export class SsePrintAgentClient {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
+            'x-device-token': token,
             'Content-Type': 'application/json',
           },
+          body: JSON.stringify({ deviceId: settings.deviceId }),
         });
 
         if (claimRes.status === 409) {
@@ -483,9 +574,10 @@ export class SsePrintAgentClient {
           method: 'PATCH',
           headers: {
             Authorization: `Bearer ${token}`,
+            'x-device-token': token,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ status: 'PRINTING' }),
+          body: JSON.stringify({ status: 'PRINTING', deviceId: settings.deviceId }),
         });
       } catch {
         // ignore
@@ -508,9 +600,10 @@ export class SsePrintAgentClient {
             method: 'PATCH',
             headers: {
               Authorization: `Bearer ${token}`,
+              'x-device-token': token,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ status: 'PRINTED' }),
+            body: JSON.stringify({ status: 'PRINTED', deviceId: settings.deviceId }),
           });
         } catch {
           // ignore
@@ -538,11 +631,13 @@ export class SsePrintAgentClient {
             method: 'PATCH',
             headers: {
               Authorization: `Bearer ${token}`,
+              'x-device-token': token,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               status: 'FAILED',
               errorMessage: printResult.error,
+              deviceId: settings.deviceId,
             }),
           });
         } catch {
