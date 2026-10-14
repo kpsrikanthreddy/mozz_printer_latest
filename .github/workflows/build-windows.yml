@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build-windows:
+    name: Windows Installer Build (Electron Rebuild & Packaging)
     runs-on: windows-2022
     env:
       GYP_MSVS_VERSION: "2022"
@@ -20,11 +21,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Node test ABI and Electron ABI are different. Never run Electron rebuild before Node tests.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Print Node and npm versions
         run: |
@@ -34,6 +37,7 @@ jobs:
       - name: Install setuptools for Python
         run: pip install setuptools
 
+      # Start from a clean install containing production & optional native build dependencies
       - name: Install dependencies
         run: npm ci --include=optional
 
@@ -62,52 +66,28 @@ jobs:
             throw "Missing or broken esbuild dependency: $_"
           }
 
-      # --- 1. Rebuild better-sqlite3 for current Node runtime ---
-      - name: Rebuild better-sqlite3 for Node runtime
-        shell: pwsh
-        run: |
-          Write-Host "Rebuilding better-sqlite3 for current Node runtime..."
-          npm rebuild better-sqlite3 --build-from-source
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to rebuild better-sqlite3 for Node runtime."
-          }
-
-      # --- 2. Diagnostics before Node tests ---
-      - name: Node test diagnostics
-        shell: pwsh
-        run: |
-          Write-Host "=== Node Test Diagnostics ==="
-          node --version
-          node -p "process.versions.modules"
-          node -p "process.versions.electron || 'not-electron'"
-
-      # --- 3. Node checks and Node tests immediately after Node rebuild ---
-      - name: TypeScript checks
-        run: npm run lint
-
-      - name: Run tests (Node runtime)
-        run: npm test
-
-      # --- 4. Build application (Vite renderer + main TypeScript) ---
+      # Build application assets (Vite renderer + TypeScript main/preload) before native packaging
       - name: Build application
         run: npm run build:electron
 
-      # --- 5. Only AFTER all Node tests pass, rebuild better-sqlite3 for Electron ---
+      # Rebuild native dependencies only for the Electron version being packaged.
+      # Node test ABI and Electron ABI are different. Never run Electron rebuild before Node tests.
+      # Do NOT run npm test after electron-rebuild in this job!
       - name: Rebuild better-sqlite3 for Electron
         shell: pwsh
         run: |
-          Write-Host "Rebuilding better-sqlite3 for Electron..."
-          npx electron-rebuild --force --only better-sqlite3 --arch=x64
+          Write-Host "Rebuilding better-sqlite3 for Electron runtime..."
+          npx electron-rebuild --force --only better-sqlite3 --arch x64
           if ($LASTEXITCODE -ne 0) {
             throw "electron-rebuild failed with exit code $LASTEXITCODE"
           }
           Write-Host "✔ electron-rebuild completed successfully"
 
-      # --- 6. Diagnostics before Electron packaging ---
       - name: Electron build diagnostics
         shell: pwsh
         run: |
           Write-Host "=== Electron Build Diagnostics ==="
+          Write-Host "Electron Version:"
           node -p "require('./node_modules/electron/package.json').version"
           $binary = Get-ChildItem "node_modules/better-sqlite3" -Recurse -Filter "better_sqlite3.node" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $binary) {
@@ -115,7 +95,7 @@ jobs:
           }
           Write-Host "Location of better_sqlite3.node: $($binary.FullName)"
           Write-Host "Binary size: $($binary.Length) bytes"
-          Write-Host "✔ electron-rebuild completed successfully"
+          Write-Host "✔ Verified better-sqlite3.node exists for Electron packaging"
 
       - name: Electron-runtime SQLite smoke test
         shell: pwsh
@@ -125,7 +105,7 @@ jobs:
             throw "Electron-runtime SQLite smoke test FAILED with exit code $LASTEXITCODE"
           }
 
-      # --- 7. Build Windows installer (Never run npm test after Electron rebuild!) ---
+      # Build Windows installer (Never run npm test after Electron rebuild!)
       - name: Build Windows installer
         shell: pwsh
         run: |

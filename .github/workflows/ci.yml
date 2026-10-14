@@ -8,6 +8,7 @@ on:
 
 jobs:
   verify:
+    name: CI Verification (Lint, Test, Web Build)
     runs-on: windows-2022
     env:
       GYP_MSVS_VERSION: "2022"
@@ -17,11 +18,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Node test ABI and Electron ABI are different. Never run Electron rebuild before Node tests.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Print Node and npm versions
         run: |
@@ -31,6 +34,7 @@ jobs:
       - name: Install setuptools for Python
         run: pip install setuptools
 
+      # Install clean dependencies including required optional binaries (@rollup/rollup-win32-x64-msvc)
       - name: Install dependencies
         run: npm ci --include=optional
 
@@ -59,6 +63,9 @@ jobs:
             throw "Missing or broken esbuild dependency: $_"
           }
 
+      # Rebuild better-sqlite3 strictly for the current Node runtime (Node ABI, e.g. NODE_MODULE_VERSION 132 for Node 22).
+      # Node test ABI and Electron ABI are different. Never run Electron rebuild before Node tests.
+      # Do NOT run electron-rebuild, electron-builder install-app-deps, or any Electron ABI rebuild in this CI test job.
       - name: Rebuild better-sqlite3 for Node runtime
         shell: pwsh
         run: |
@@ -74,7 +81,7 @@ jobs:
           Write-Host "=== Node Test Diagnostics ==="
           node --version
           node -p "process.versions.modules"
-          node -p "process.versions.electron || 'not-electron'"
+          node -e "require('better-sqlite3'); console.log('better-sqlite3 loads successfully under Node')"
 
       - name: TypeScript checks
         run: npm run lint

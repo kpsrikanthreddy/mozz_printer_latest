@@ -83,7 +83,7 @@ export function generateKotHtml(payload: KotTicketPayload, paperWidthMm: PaperWi
             opacity: 1 !important;
             page-break-inside: avoid;
             text-rendering: geometricPrecision;
-            ${isA4Test ? 'border-right: 2px dashed #000000; border-bottom: 2px dashed #000000; padding-bottom: 16px;' : ''}
+            ${isA4Test ? 'border-right: 1px dashed #777; border-bottom: 1px dashed #777; padding-bottom: 16px;' : ''}
           }
           .center { text-align: center; color: #000000 !important; font-weight: bold !important; }
           .bold { font-weight: bold !important; color: #000000 !important; }
@@ -266,7 +266,7 @@ export function generateBillHtml(payload: BillTicketPayload, paperWidthMm: Paper
             opacity: 1 !important;
             page-break-inside: avoid;
             text-rendering: geometricPrecision;
-            ${isA4Test ? 'border-right: 2px dashed #000000; border-bottom: 2px dashed #000000; padding-bottom: 16px;' : ''}
+            ${isA4Test ? 'border-right: 1px dashed #777; border-bottom: 1px dashed #777; padding-bottom: 16px;' : ''}
           }
           .center { text-align: center; color: #000000 !important; font-weight: bold !important; }
           .bold { font-weight: bold !important; color: #000000 !important; }
